@@ -4,5 +4,5 @@
 	branch = master
 [submodule "lib/xpp"]
 	path = lib/xpp
-	url = https://github.com/polybar/xpp
+	url = https://github.com/kafudz/xpp
 	branch = master
