@@ -1,4 +1,7 @@
 #include <fcntl.h>
+
+#include <algorithm>
+#include <cerrno>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -73,15 +76,23 @@ namespace socket_util {
    * Receive data
    */
   string unix_connection::receive(const ssize_t receive_bytes, ssize_t* bytes_received, int flags) {
-    char buffer[BUFSIZ];
+    // Never read more than the buffer can hold. Callers pass BUFSIZ, and the terminating byte written below would
+    // otherwise end up one past the end of the buffer.
+    char buffer[BUFSIZ + 1];
+    const size_t max_bytes = receive_bytes < 0 ? 0 : std::min<size_t>(receive_bytes, BUFSIZ);
 
-    if ((*bytes_received = ::recv(m_fd, buffer, receive_bytes, flags)) == -1) {
+    ssize_t received;
+    do {
+      received = ::recv(m_fd, buffer, max_bytes, flags);
+    } while (received == -1 && errno == EINTR);
+
+    if (received == -1) {
       throw system_error("Failed to receive data");
-    } else {
-      buffer[*bytes_received] = 0;
     }
 
-    return string{buffer};
+    *bytes_received = received;
+    // Construct from the length so the data is not cut off at an embedded NUL byte
+    return string(buffer, static_cast<size_t>(received));
   }
 
   /**
@@ -108,8 +119,13 @@ namespace socket_util {
     struct pollfd fds[1];
     fds[0].fd = m_fd;
     fds[0].events = events;
+    fds[0].revents = 0;
 
     if (::poll(fds, 1, timeout_ms) == -1) {
+      if (errno == EINTR) {
+        // Interrupted by a signal, which is not an error and just means there is nothing to report yet
+        return false;
+      }
       throw system_error("Failed to poll file descriptor");
     }
 

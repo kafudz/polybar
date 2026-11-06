@@ -108,10 +108,17 @@ script_runner::interval script_runner::run() {
     /**
      * For non-tailed scripts, we only use the first line. However, to ensure interruptability when the module shuts
      * down, we still need to continue polling.
+     *
+     * Any further output has to be read and discarded. If it stays in the pipe, poll_read returns immediately every
+     * time, which makes this loop spin at full CPU load until the script exits. A script that writes more than the
+     * pipe buffer holds would also block forever on its write.
      */
-    if (io_util::poll_read(fd, 250) && !got_output) {
-      changed = set_output(cmd.readline());
-      got_output = true;
+    if (io_util::poll_read(fd, 250)) {
+      auto line = cmd.readline();
+      if (!got_output) {
+        changed = set_output(std::move(line));
+        got_output = true;
+      }
     }
   }
 

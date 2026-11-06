@@ -27,7 +27,12 @@ namespace io_util {
     struct pollfd fds[1];
     fds[0].fd = fd;
     fds[0].events = events;
-    ::poll(fds, 1, timeout_ms);
+    fds[0].revents = 0;
+
+    // On error (e.g. EINTR) revents is not touched, so it must not be looked at
+    if (::poll(fds, 1, timeout_ms) <= 0) {
+      return false;
+    }
     return fds[0].revents & events;
   }
 

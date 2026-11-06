@@ -44,6 +44,7 @@ namespace modules {
 
     void stop() override;
     bool has_event();
+    void idle();
     bool update();
     string get_output();
     bool build(builder* builder, const string& tag) const;

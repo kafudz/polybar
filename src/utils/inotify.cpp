@@ -76,8 +76,12 @@ bool inotify_watch::poll(int wait_ms) const {
   struct pollfd fds[1];
   fds[0].fd = m_fd;
   fds[0].events = POLLIN;
+  fds[0].revents = 0;
 
-  ::poll(fds, 1, wait_ms);
+  // On error (e.g. EINTR) revents is not touched, so it must not be looked at
+  if (::poll(fds, 1, wait_ms) <= 0) {
+    return false;
+  }
 
   return fds[0].revents & POLLIN;
 }

@@ -30,6 +30,13 @@ namespace modules {
         throw module_error(
             this->name() + ": 'interval' must be larger than 0 (got '" + to_string(m_interval.count()) + "s')");
       }
+
+      // The runner takes the time modulo the interval in clock ticks (nanoseconds). Anything smaller than that
+      // rounds to 0 ticks and would crash with a division by zero. Anything this small would also just burn CPU.
+      if (m_interval < 1ms) {
+        throw module_error(
+            this->name() + ": 'interval' must be at least 0.001 (got '" + to_string(m_interval.count()) + "s')");
+      }
     }
 
     void runner() {

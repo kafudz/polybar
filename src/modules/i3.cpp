@@ -114,17 +114,30 @@ namespace modules {
     event_module::stop();
   }
 
+  /**
+   * Waits between event checks.
+   *
+   * While i3 is unreachable every attempt fails immediately, so without a longer pause this would reconnect (and log
+   * an error) every 25ms for as long as i3 is gone.
+   */
+  void i3_module::idle() {
+    sleep(m_reconnect_failed ? 2s : 25ms);
+  }
+
   bool i3_module::has_event() {
     try {
       m_ipc->handle_event();
+      m_reconnect_failed = false;
       return true;
     } catch (const exception& err) {
       try {
         m_log.warn("%s: Attempting to reconnect socket (reason: %s)", name(), err.what());
         m_ipc->connect_event_socket(true);
         m_log.info("%s: Reconnecting socket succeeded", name());
+        m_reconnect_failed = false;
       } catch (const exception& err) {
         m_log.err("%s: Failed to reconnect socket (reason: %s)", name(), err.what());
+        m_reconnect_failed = true;
       }
       return false;
     }

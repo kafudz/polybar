@@ -1,6 +1,9 @@
 #include "modules/bspwm.hpp"
 
+#include <poll.h>
 #include <sys/socket.h>
+
+#include <chrono>
 
 #include "drawtypes/iconset.hpp"
 #include "drawtypes/label.hpp"
@@ -162,6 +165,40 @@ namespace modules {
       m_subscriber = bspwm_util::make_subscriber();
     }
     return m_subscriber->peek(1);
+  }
+
+  /**
+   * Waits for the next event from bspwm.
+   *
+   * Instead of waking up every 25ms to check for data, this blocks until bspwm sends something. Events are still
+   * handled immediately, but an idle bar no longer wakes up this thread 40 times per second. The timeout bounds how
+   * long it takes to notice that the module is stopping.
+   */
+  void bspwm_module::idle() {
+    if (!running()) {
+      return;
+    }
+
+    if (!m_subscriber) {
+      sleep(25ms);
+      return;
+    }
+
+    const auto start = std::chrono::steady_clock::now();
+
+    try {
+      if (m_subscriber->poll(POLLIN, 100)) {
+        return;
+      }
+    } catch (const exception& err) {
+      m_log.warn("%s: Failed to wait for bspwm events (reason: %s)", name(), err.what());
+    }
+
+    // poll also returns early without data if the connection was hung up or failed. has_event reconnects in that
+    // case, but until then this must not turn into a busy loop.
+    if (std::chrono::steady_clock::now() - start < 25ms) {
+      sleep(25ms);
+    }
   }
 
   bool bspwm_module::update() {

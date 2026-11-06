@@ -84,6 +84,12 @@ pulseaudio::pulseaudio(const logger& logger, string&& sink_name, bool max_volume
   op = pa_context_subscribe(m_context, event_types, simple_callback, this);
   wait_loop(op, m_mainloop);
   if (!success) {
+    // The destructor does not run if the constructor throws, so clean up here like in the other error paths
+    pa_threaded_mainloop_unlock(m_mainloop);
+    pa_threaded_mainloop_stop(m_mainloop);
+    pa_context_disconnect(m_context);
+    pa_context_unref(m_context);
+    pa_threaded_mainloop_free(m_mainloop);
     throw pulseaudio_error("Failed to subscribe to sink.");
   }
   pa_context_set_subscribe_callback(m_context, subscribe_callback, this);
@@ -114,15 +120,19 @@ const string& pulseaudio::get_name() {
  * Wait for events
  */
 bool pulseaudio::wait() {
-  return m_events.size() > 0;
+  // m_events is filled by the callbacks of the pulseaudio mainloop thread, which run with the mainloop lock held
+  pa_threaded_mainloop_lock(m_mainloop);
+  bool has_events = !m_events.empty();
+  pa_threaded_mainloop_unlock(m_mainloop);
+  return has_events;
 }
 
 /**
  * Process queued pulseaudio events
  */
 int pulseaudio::process_events() {
-  int ret = m_events.size();
   pa_threaded_mainloop_lock(m_mainloop);
+  int ret = m_events.size();
   pa_operation* o{nullptr};
   // clear the queue
   while (!m_events.empty()) {

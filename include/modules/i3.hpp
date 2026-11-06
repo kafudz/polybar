@@ -49,6 +49,7 @@ namespace modules {
 
     void stop() override;
     bool has_event();
+    void idle();
     bool update();
     bool build(builder* builder, const string& tag) const;
 
@@ -67,6 +68,11 @@ namespace modules {
 
    private:
     static string make_workspace_command(const string& workspace);
+
+    /**
+     * Set while the connection to i3 is down and reconnecting fails, so we don't retry in a tight loop.
+     */
+    bool m_reconnect_failed{false};
 
     static constexpr const char* DEFAULT_TAGS{"<label-state> <label-mode>"};
     static constexpr const char* DEFAULT_MODE{"default"};
