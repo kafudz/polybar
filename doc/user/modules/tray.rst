@@ -36,7 +36,7 @@ The module only has a single format:
 
 .. poly-setting:: format
 
-  :type: |type-format|
+  :type: `format <type-format_>`_
   :tags: ``<tray>``: Shows tray icons
   :default: ``<tray>``
 
@@ -47,21 +47,21 @@ Settings
 
   Space added between tray icons
 
-  :type: |type-extent|, non-negative
+  :type: `extent <type-extent_>`_, non-negative
   :default: ``0px``
 
 .. poly-setting:: tray-padding
 
   Space added before and after each tray icon
 
-  :type: |type-extent|, non-negative
+  :type: `extent <type-extent_>`_, non-negative
   :default: ``0px``
 
 .. poly-setting:: tray-size
 
   Size of individual tray icons
 
-  :type: |type-pwo|, relative to bar height, non-negative
+  :type: `percentage with offset <type-pwo_>`_, relative to bar height, non-negative
   :default: 66%
 
 .. poly-setting:: tray-background
