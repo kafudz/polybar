@@ -69,6 +69,17 @@ namespace modules {
     return false;
   }
 
+  /**
+   * Sleeps until pulseaudio reports an event instead of checking for one every 25ms.
+   */
+  void pulseaudio_module::idle() {
+    if (!running()) {
+      return;
+    }
+
+    m_pulseaudio->wait_for_events(100);
+  }
+
   bool pulseaudio_module::update() {
     // Consume pending events
     m_pulseaudio->process_events();

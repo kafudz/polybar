@@ -35,6 +35,7 @@ by [@stringlapse](https://github.com/stringlapse).
 - `internal/bspwm`: The module no longer wakes up 40 times per second while idle. It now waits for data on the bspwm socket, which keeps event handling immediate.
 - `internal/i3`: While i3 is unreachable, reconnecting is retried every 2 seconds instead of every 25ms, which also stops the error log from being flooded.
 - `internal/pulseaudio`: The event queue is now accessed with the mainloop lock held, and the failure path in the constructor no longer leaks the context and mainloop.
+- `internal/pulseaudio`: The module no longer wakes up 40 times per second while idle. It now sleeps until PulseAudio reports an event, which also makes volume changes show up with less delay.
 - Modules with an `interval` smaller than 1ms are rejected instead of crashing with a division by zero.
 - Sockets: `recv` can no longer write one byte past its buffer, is retried after `EINTR`, and no longer cuts data off at an embedded NUL byte. Interrupted `poll` calls are not treated as errors.
 - `poll` wrappers no longer inspect `revents` after a failed `poll` call (it was uninitialized).

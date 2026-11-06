@@ -1,5 +1,13 @@
 #include "adapters/pulseaudio.hpp"
 
+#include <poll.h>
+#include <sys/eventfd.h>
+
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <thread>
+
 #include "components/logger.hpp"
 
 POLYBAR_NS
@@ -92,6 +100,12 @@ pulseaudio::pulseaudio(const logger& logger, string&& sink_name, bool max_volume
     pa_threaded_mainloop_free(m_mainloop);
     throw pulseaudio_error("Failed to subscribe to sink.");
   }
+  m_eventfd.fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+  if (m_eventfd.fd == -1) {
+    // Not fatal, wait_for_events falls back to checking the queue periodically
+    m_log.warn("pulseaudio: Failed to create eventfd, falling back to polling (reason: %s)", strerror(errno));
+  }
+
   pa_context_set_subscribe_callback(m_context, subscribe_callback, this);
 
   update_volume(op);
@@ -123,8 +137,42 @@ bool pulseaudio::wait() {
   // m_events is filled by the callbacks of the pulseaudio mainloop thread, which run with the mainloop lock held
   pa_threaded_mainloop_lock(m_mainloop);
   bool has_events = !m_events.empty();
+
+  if (!has_events && m_eventfd.fd != -1) {
+    // Everything that was signalled has been processed. Events are queued and signalled with the mainloop lock held,
+    // so there can't be a signal for an event that isn't in the queue yet. Without this, wait_for_events would
+    // return immediately forever.
+    eventfd_t counter;
+    eventfd_read(m_eventfd.fd, &counter);
+  }
+
   pa_threaded_mainloop_unlock(m_mainloop);
   return has_events;
+}
+
+/**
+ * Sleeps until pulseaudio queued an event, or until the timeout expired.
+ *
+ * The timeout only bounds how long it takes the caller to notice that it should stop, events are handled immediately.
+ */
+void pulseaudio::wait_for_events(int timeout_ms) {
+  if (m_eventfd.fd == -1) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    return;
+  }
+
+  struct pollfd pfd {};
+  pfd.fd = m_eventfd.fd;
+  pfd.events = POLLIN;
+
+  const int ret = ::poll(&pfd, 1, timeout_ms);
+
+  if (ret == 0 || (ret > 0 && (pfd.revents & POLLIN)) || (ret < 0 && errno == EINTR)) {
+    return;
+  }
+
+  // Unexpected failure of poll, make sure that this can't turn into a busy loop
+  std::this_thread::sleep_for(std::chrono::milliseconds(25));
 }
 
 /**
@@ -286,6 +334,7 @@ void pulseaudio::get_sink_volume_callback(pa_context*, const pa_sink_info* info,
  */
 void pulseaudio::subscribe_callback(pa_context*, pa_subscription_event_type_t t, uint32_t idx, void* userdata) {
   pulseaudio* This = static_cast<pulseaudio*>(userdata);
+  const auto queued_before = This->m_events.size();
   switch (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) {
     case PA_SUBSCRIPTION_EVENT_SERVER:
       switch (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) {
@@ -310,6 +359,12 @@ void pulseaudio::subscribe_callback(pa_context*, pa_subscription_event_type_t t,
       }
       break;
   }
+
+  if (This->m_eventfd.fd != -1 && This->m_events.size() != queued_before) {
+    // Wakes up wait_for_events. This can only fail if the counter overflows, in which case it is signalled anyway.
+    eventfd_write(This->m_eventfd.fd, 1);
+  }
+
   pa_threaded_mainloop_signal(This->m_mainloop, 0);
 }
 
