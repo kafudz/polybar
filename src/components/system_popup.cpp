@@ -7,17 +7,21 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <mutex>
+#include <set>
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "components/logger.hpp"
 #include "settings.hpp"
+#include "utils/command.hpp"
 #include "utils/file.hpp"
 #include "utils/process.hpp"
 #include "utils/string.hpp"
@@ -52,6 +56,19 @@ namespace {
   };
 
   enum class drag_target { NONE, VOLUME, BRIGHTNESS };
+
+  struct network_entry {
+    string ssid;
+    int signal{0};
+    bool secure{false};
+    bool active{false};
+    bool saved{false};
+
+    bool operator==(const network_entry& other) const {
+      return ssid == other.ssid && signal == other.signal && secure == other.secure && active == other.active &&
+          saved == other.saved;
+    }
+  };
 
   struct controls_state {
     int x{0};
@@ -92,6 +109,23 @@ namespace {
     string battery_charge_full_path{};
     string battery_status_path{};
 
+    bool network_available{false};
+    bool network_expanded{false};
+    bool network_connected{false};
+    bool network_is_wifi{false};
+    bool network_is_ethernet{false};
+    bool network_wifi_hw{false};
+    bool network_wifi_enabled{false};
+    string network_name{};
+    string network_device{};
+    string network_ip{};
+    int network_signal{0};
+    std::vector<network_entry> networks;
+    int network_scroll{0};
+    string network_message{};
+    std::chrono::steady_clock::time_point network_message_until{};
+    std::chrono::steady_clock::time_point last_network_refresh{};
+
     drag_target dragging{drag_target::NONE};
     bool volume_pending{false};
     bool brightness_pending{false};
@@ -102,6 +136,49 @@ namespace {
     std::unique_ptr<pulseaudio> pulse;
 #endif
   };
+
+  struct network_layout {
+    double panel_top{0.0};
+    double inner_pad{0.0};
+    double wifi_row_y{0.0};
+    double wifi_row_height{0.0};
+    double list_top{0.0};
+    double list_row_height{0.0};
+    double hint_height{0.0};
+    double message_height{0.0};
+    int visible_rows{0};
+  };
+
+  network_layout get_network_layout(const controls_state& state) {
+    network_layout layout;
+    layout.panel_top = state.pad + state.header_height + 4 * state.row_height;
+    layout.inner_pad = 10.0 * state.scale;
+    layout.wifi_row_y = layout.panel_top + layout.inner_pad;
+    layout.wifi_row_height = 30.0 * state.scale;
+    layout.list_top = layout.wifi_row_y + layout.wifi_row_height;
+    layout.list_row_height = 28.0 * state.scale;
+    layout.hint_height = 22.0 * state.scale;
+    layout.message_height = 20.0 * state.scale;
+    layout.visible_rows = state.network_wifi_hw && state.network_wifi_enabled ? 5 : 0;
+    return layout;
+  }
+
+  double network_panel_height(const controls_state& state) {
+    if (!state.network_expanded || !state.network_available) {
+      return 0.0;
+    }
+
+    const auto layout = get_network_layout(state);
+    const double list_height =
+        layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
+
+    return layout.inner_pad + layout.wifi_row_height + list_height + layout.message_height + layout.inner_pad;
+  }
+
+  int popup_height(const controls_state& state) {
+    return static_cast<int>(
+        std::round(state.pad + state.header_height + 4 * state.row_height + network_panel_height(state) + state.pad));
+  }
 
   rgb make_rgb(const rgba& color, const rgb& fallback) {
     if (!color.has_color() || color.get_type() == rgba::type::ALPHA_ONLY) {
@@ -255,6 +332,112 @@ namespace {
       cairo_arc(cr, knob_x, center_y, knob_radius, 0.0, 2.0 * PI);
       cairo_fill(cr);
     }
+  }
+
+  void draw_wifi(cairo_t* cr, double x, double y, double size, int signal, const rgb& color) {
+    const double u = size / 20.0;
+    const double center_x = x + 10.0 * u;
+    const double base_y = y + 16.0 * u;
+    const int arcs = signal >= 70 ? 3 : (signal >= 40 ? 2 : 1);
+
+    cairo_new_path(cr);
+    set_source(cr, color);
+    cairo_arc(cr, center_x, base_y, 1.8 * u, 0.0, 2.0 * PI);
+    cairo_fill(cr);
+
+    cairo_set_line_width(cr, std::max(1.0, 1.6 * u));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+    for (int i = 0; i < arcs; i++) {
+      const double radius = (5.0 + i * 4.0) * u;
+      cairo_arc(cr, center_x, base_y, radius, PI * 1.2, PI * 1.8);
+      cairo_stroke(cr);
+    }
+  }
+
+  void draw_ethernet(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double u = size / 20.0;
+
+    cairo_new_path(cr);
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.0, 1.5 * u));
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    rounded_rect(cr, x + 3.0 * u, y + 8.0 * u, 14.0 * u, 9.0 * u, 1.5 * u);
+    cairo_stroke(cr);
+
+    for (int i = 0; i < 3; i++) {
+      const double pin_x = x + (6.5 + i * 3.5) * u;
+      cairo_move_to(cr, pin_x, y + 8.0 * u);
+      cairo_line_to(cr, pin_x, y + 5.0 * u);
+    }
+    cairo_stroke(cr);
+  }
+
+  void draw_lock(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double u = size / 20.0;
+
+    cairo_new_path(cr);
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.0, 1.4 * u));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_arc(cr, x + 10.0 * u, y + 9.0 * u, 3.5 * u, PI, 2.0 * PI);
+    cairo_stroke(cr);
+
+    cairo_new_path(cr);
+    rounded_rect(cr, x + 5.0 * u, y + 9.0 * u, 10.0 * u, 8.0 * u, 1.5 * u);
+    set_source(cr, color);
+    cairo_fill(cr);
+  }
+
+  void draw_check(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double u = size / 20.0;
+
+    cairo_new_path(cr);
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.0, 1.8 * u));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    cairo_move_to(cr, x + 4.0 * u, y + 10.0 * u);
+    cairo_line_to(cr, x + 8.5 * u, y + 14.5 * u);
+    cairo_line_to(cr, x + 16.0 * u, y + 5.5 * u);
+    cairo_stroke(cr);
+  }
+
+  void draw_chevron(cairo_t* cr, double x, double y, double size, const rgb& color, bool up) {
+    const double u = size / 20.0;
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.0, 1.6 * u));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    if (up) {
+      cairo_move_to(cr, x + 5.0 * u, y + 12.0 * u);
+      cairo_line_to(cr, x + 10.0 * u, y + 7.0 * u);
+      cairo_line_to(cr, x + 15.0 * u, y + 12.0 * u);
+    } else {
+      cairo_move_to(cr, x + 5.0 * u, y + 8.0 * u);
+      cairo_line_to(cr, x + 10.0 * u, y + 13.0 * u);
+      cairo_line_to(cr, x + 15.0 * u, y + 8.0 * u);
+    }
+
+    cairo_stroke(cr);
+  }
+
+  void draw_switch(cairo_t* cr, double x, double y, double width, double height, bool on, const rgb& track_on,
+      const rgb& track_off, const rgb& knob_on, const rgb& knob_off) {
+    const double radius = height / 2.0;
+    const double knob_radius = height * 0.36;
+
+    rounded_rect(cr, x, y, width, height, radius);
+    set_source(cr, on ? track_on : track_off);
+    cairo_fill(cr);
+
+    const double knob_x = on ? x + width - radius : x + radius;
+    set_source(cr, on ? knob_on : knob_off);
+    cairo_arc(cr, knob_x, y + radius, knob_radius, 0.0, 2.0 * PI);
+    cairo_fill(cr);
   }
 
   xcb_visualtype_t* find_visualtype(xcb_screen_t* screen) {
@@ -482,6 +665,432 @@ namespace {
     return changed;
   }
 
+  std::pair<int, string> run_command_with_status(const string& command_line) {
+    std::pair<int, string> result{-1, {}};
+
+    try {
+      command<output_policy::REDIRECTED> proc(logger::make(), command_line);
+      proc.exec(false);
+      proc.tail([&](string line) {
+        result.second += line;
+        result.second += '\n';
+      });
+      result.first = proc.wait();
+    } catch (const std::exception&) {
+      // Treat a failure to start the command as an unavailable command.
+    }
+
+    return result;
+  }
+
+  void run_async(const string& command_line) {
+    try {
+      process_util::fork_detached([command_line] { process_util::exec_sh(command_line.c_str()); });
+    } catch (const std::exception& err) {
+      logger::make().err("system popup: could not run command (%s)", err.what());
+    }
+  }
+
+  string shell_quote(const string& value) {
+    string result{"'"};
+
+    for (char c : value) {
+      if (c == '\'') {
+        result += "'\\''";
+      } else {
+        result += c;
+      }
+    }
+
+    result += "'";
+    return result;
+  }
+
+  string unescape_terse(const string& value) {
+    string result;
+    result.reserve(value.size());
+
+    for (size_t i = 0; i < value.size(); i++) {
+      if (value[i] == '\\' && i + 1 < value.size()) {
+        result += value[++i];
+      } else {
+        result += value[i];
+      }
+    }
+
+    return result;
+  }
+
+  vector<string> split_terse(const string& line) {
+    vector<string> fields;
+    string current;
+    bool escaped = false;
+
+    for (char c : line) {
+      if (escaped) {
+        current += c;
+        escaped = false;
+      } else if (c == '\\') {
+        escaped = true;
+      } else if (c == ':') {
+        fields.push_back(current);
+        current.clear();
+      } else {
+        current += c;
+      }
+    }
+
+    fields.push_back(current);
+    return fields;
+  }
+
+  vector<string> split_lines(const string& text) {
+    vector<string> lines;
+    string current;
+
+    for (char c : text) {
+      if (c == '\n') {
+        if (!current.empty()) {
+          lines.push_back(current);
+          current.clear();
+        }
+      } else if (c != '\r') {
+        current += c;
+      }
+    }
+
+    if (!current.empty()) {
+      lines.push_back(current);
+    }
+
+    return lines;
+  }
+
+  string lower_copy(string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+  }
+
+  string truncate_text(const string& text, size_t max_chars) {
+    size_t count = 0;
+
+    for (size_t i = 0; i < text.size(); i++) {
+      if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80) {
+        if (count == max_chars) {
+          return text.substr(0, i) + "…";
+        }
+        count++;
+      }
+    }
+
+    return text;
+  }
+
+  bool read_network(controls_state& state) {
+    bool changed = false;
+
+    auto radio = run_command_with_status("nmcli -t -f WIFI-HW,WIFI radio 2>/dev/null");
+
+    if (radio.first != 0) {
+      if (state.network_available) {
+        state.network_available = false;
+        changed = true;
+      }
+      return changed;
+    }
+
+    bool wifi_hw = state.network_wifi_hw;
+    bool wifi_enabled = state.network_wifi_enabled;
+
+    for (const auto& line : split_lines(radio.second)) {
+      auto fields = split_terse(line);
+
+      if (fields.size() < 2) {
+        continue;
+      }
+
+      if (fields[0] == "WIFI-HW") {
+        wifi_hw = fields[1] == "enabled";
+      } else if (fields[0] == "WIFI") {
+        wifi_enabled = fields[1] == "enabled";
+      } else {
+        // Terse output for selected radio fields omits the field names.
+        wifi_hw = fields[0] == "enabled";
+        wifi_enabled = fields[1] == "enabled";
+      }
+    }
+
+    struct device_info {
+      string device;
+      string type;
+      string state;
+      string connection;
+      string ip;
+    };
+
+    auto devices = run_command_with_status(
+        "nmcli -t -f GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS device show "
+        "2>/dev/null");
+
+    if (devices.first != 0) {
+      if (state.network_available) {
+        state.network_available = false;
+        changed = true;
+      }
+      return changed;
+    }
+
+    vector<device_info> device_list;
+    device_info current;
+    bool have_device = false;
+
+    for (const auto& line : split_lines(devices.second)) {
+      const auto separator = line.find(':');
+
+      if (separator == string::npos) {
+        continue;
+      }
+
+      const auto key = line.substr(0, separator);
+      const auto value = unescape_terse(line.substr(separator + 1));
+
+      if (key == "GENERAL.DEVICE") {
+        if (have_device) {
+          device_list.push_back(current);
+        }
+        current = {};
+        current.device = value;
+        have_device = true;
+      } else if (!have_device) {
+        continue;
+      } else if (key == "GENERAL.TYPE") {
+        current.type = value;
+      } else if (key == "GENERAL.STATE") {
+        current.state = value;
+      } else if (key == "GENERAL.CONNECTION") {
+        current.connection = value;
+      } else if (key.compare(0, 11, "IP4.ADDRESS") == 0 && current.ip.empty()) {
+        const auto prefix = value.find('/');
+        current.ip = prefix == string::npos ? value : value.substr(0, prefix);
+      }
+    }
+
+    if (have_device) {
+      device_list.push_back(current);
+    }
+
+    const device_info* active = nullptr;
+
+    for (const auto& device : device_list) {
+      if (device.type == "loopback" || device.state.find("connected") == string::npos) {
+        continue;
+      }
+
+      if (device.type == "wifi") {
+        active = &device;
+        break;
+      }
+
+      if (active == nullptr) {
+        active = &device;
+      }
+    }
+
+    const bool new_connected = active != nullptr;
+    const bool new_is_wifi = active != nullptr && active->type == "wifi";
+    const bool new_is_ethernet = active != nullptr && active->type == "ethernet";
+    const string new_name = active != nullptr ? active->connection : "";
+    const string new_device = active != nullptr ? active->device : "";
+    const string new_ip = active != nullptr ? active->ip : "";
+
+    if (!state.network_available) {
+      state.network_available = true;
+      changed = true;
+    }
+    if (state.network_wifi_hw != wifi_hw) {
+      state.network_wifi_hw = wifi_hw;
+      changed = true;
+    }
+    if (state.network_wifi_enabled != wifi_enabled) {
+      state.network_wifi_enabled = wifi_enabled;
+      changed = true;
+    }
+    if (state.network_connected != new_connected) {
+      state.network_connected = new_connected;
+      changed = true;
+    }
+    if (state.network_is_wifi != new_is_wifi) {
+      state.network_is_wifi = new_is_wifi;
+      changed = true;
+    }
+    if (state.network_is_ethernet != new_is_ethernet) {
+      state.network_is_ethernet = new_is_ethernet;
+      changed = true;
+    }
+    if (state.network_name != new_name) {
+      state.network_name = new_name;
+      changed = true;
+    }
+    if (state.network_device != new_device) {
+      state.network_device = new_device;
+      changed = true;
+    }
+    if (state.network_ip != new_ip) {
+      state.network_ip = new_ip;
+      changed = true;
+    }
+
+    vector<network_entry> new_networks;
+
+    if (wifi_hw && wifi_enabled && state.network_expanded) {
+      auto wifi_list =
+          run_command_with_status("nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list 2>/dev/null");
+
+      if (wifi_list.first == 0) {
+        std::set<string> saved_networks;
+        auto profiles = run_command_with_status("nmcli -t -f NAME,TYPE connection show 2>/dev/null");
+
+        if (profiles.first == 0) {
+          for (const auto& line : split_lines(profiles.second)) {
+            auto fields = split_terse(line);
+
+            if (fields.size() < 2 || fields[1] != "802-11-wireless") {
+              continue;
+            }
+
+            saved_networks.insert(lower_copy(fields[0]));
+
+            auto profile_ssid = run_command_with_status(
+                "nmcli -t -f 802-11-wireless.ssid connection show id " + shell_quote(fields[0]) + " 2>/dev/null");
+
+            if (profile_ssid.first != 0) {
+              continue;
+            }
+
+            for (const auto& profile_line : split_lines(profile_ssid.second)) {
+              auto profile_fields = split_terse(profile_line);
+
+              if (profile_fields.size() >= 2 && profile_fields[0] == "802-11-wireless.ssid" &&
+                  !profile_fields[1].empty()) {
+                saved_networks.insert(lower_copy(profile_fields[1]));
+              }
+            }
+          }
+        }
+
+        for (const auto& line : split_lines(wifi_list.second)) {
+          auto fields = split_terse(line);
+
+          if (fields.size() < 4 || fields[1].empty()) {
+            continue;
+          }
+
+          network_entry entry;
+          entry.ssid = fields[1];
+          entry.signal = std::clamp(std::atoi(fields[2].c_str()), 0, 100);
+          entry.secure = !fields[3].empty() && fields[3] != "--";
+          entry.active = fields[0] == "*";
+          entry.saved = saved_networks.count(lower_copy(entry.ssid)) > 0;
+
+          auto existing = std::find_if(new_networks.begin(), new_networks.end(),
+              [&](const network_entry& other) { return other.ssid == entry.ssid; });
+
+          if (existing == new_networks.end()) {
+            new_networks.push_back(std::move(entry));
+          } else {
+            existing->active = existing->active || entry.active;
+            existing->saved = existing->saved || entry.saved;
+
+            if (entry.signal > existing->signal) {
+              existing->signal = entry.signal;
+            }
+          }
+        }
+
+        std::sort(new_networks.begin(), new_networks.end(), [](const network_entry& a, const network_entry& b) {
+          if (a.active != b.active) {
+            return a.active;
+          }
+          if (a.saved != b.saved) {
+            return a.saved;
+          }
+          if (a.signal != b.signal) {
+            return a.signal > b.signal;
+          }
+          return a.ssid < b.ssid;
+        });
+      }
+    }
+
+    if ((state.network_expanded || !wifi_enabled) && state.networks != new_networks) {
+      state.networks = std::move(new_networks);
+      changed = true;
+    }
+
+    int signal = 0;
+
+    if (wifi_enabled && new_is_wifi) {
+      for (const auto& entry : state.networks) {
+        if (entry.active) {
+          signal = entry.signal;
+          break;
+        }
+      }
+    }
+
+    if (state.network_signal != signal) {
+      state.network_signal = signal;
+      changed = true;
+    }
+
+    const int max_scroll = std::max(0, static_cast<int>(state.networks.size()) - 5);
+
+    if (state.network_scroll > max_scroll) {
+      state.network_scroll = max_scroll;
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  void set_network_message(controls_state& state, string message, int seconds = 3) {
+    state.network_message = std::move(message);
+    state.network_message_until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+  }
+
+  void toggle_wifi(controls_state& state) {
+    if (!state.network_wifi_hw) {
+      return;
+    }
+
+    if (state.network_wifi_enabled) {
+      set_network_message(state, "Disabling Wi-Fi…");
+      run_async("nmcli radio wifi off >/dev/null 2>&1");
+    } else {
+      set_network_message(state, "Enabling Wi-Fi…", 5);
+      run_async("rfkill unblock wifi >/dev/null 2>&1; nmcli radio wifi on >/dev/null 2>&1");
+    }
+
+    state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+  }
+
+  void connect_network(controls_state& state, const network_entry& entry) {
+    if (entry.active) {
+      set_network_message(state, "Already connected");
+      return;
+    }
+
+    if (entry.secure && !entry.saved) {
+      set_network_message(state, "Password required");
+      return;
+    }
+
+    set_network_message(state, "Connecting to " + truncate_text(entry.ssid, 18) + "…", 10);
+    run_async("nmcli device wifi connect " + shell_quote(entry.ssid) + " >/dev/null 2>&1");
+    state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+  }
+
 #if ENABLE_PULSEAUDIO
   void init_volume(controls_state& state) {
     try {
@@ -577,6 +1186,18 @@ namespace {
     }
     changed = read_battery(state) || changed;
 
+    const auto now = std::chrono::steady_clock::now();
+
+    if (now - state.last_network_refresh >= std::chrono::seconds(2)) {
+      state.last_network_refresh = now;
+      changed = read_network(state) || changed;
+    }
+
+    if (!state.network_message.empty() && now >= state.network_message_until) {
+      state.network_message.clear();
+      changed = true;
+    }
+
     return changed;
   }
 
@@ -601,8 +1222,10 @@ namespace {
     const double track_width = state.width - state.pad - track_x;
     const double slider_height = std::max(4.0, 6.0 * state.scale);
 
+    const double row_top = state.pad + state.header_height;
+
     for (int row = 0; row < 3; row++) {
-      const double row_y = state.pad + state.header_height + row * state.row_height;
+      const double row_y = row_top + row * state.row_height;
       const double label_y = row_y + 15.0 * state.scale;
       const double track_y = row_y + 38.0 * state.scale;
 
@@ -655,6 +1278,153 @@ namespace {
         draw_slider(cr, track_x, track_y, track_width, slider_height, state.battery_available ? state.battery_percent : 0,
             state.border, icon_color, state.foreground, false);
       }
+    }
+
+    // Network row.
+    {
+      const double row_y = row_top + 3 * state.row_height;
+      const double label_y = row_y + 15.0 * state.scale;
+      const double detail_y = row_y + 34.0 * state.scale;
+      const double chevron_size = 14.0 * state.scale;
+      const double chevron_space = state.network_available ? 18.0 * state.scale : 0.0;
+      const rgb icon_color = state.network_available ? state.foreground : state.muted;
+
+      if (state.network_is_wifi) {
+        draw_wifi(cr, state.pad, row_y + 6.0 * state.scale, icon_size, state.network_signal, icon_color);
+      } else if (state.network_is_ethernet) {
+        draw_ethernet(cr, state.pad, row_y + 6.0 * state.scale, icon_size, icon_color);
+      } else {
+        draw_wifi(cr, state.pad, row_y + 6.0 * state.scale, icon_size, 0, state.muted);
+      }
+
+      draw_text_left(cr, "Network", label_x, label_y, label_size,
+          state.network_available ? state.foreground : state.muted);
+
+      string value = "Unavailable";
+      string detail;
+
+      if (state.network_available) {
+        if (!state.network_connected) {
+          value = "Disconnected";
+        } else if (state.network_is_wifi) {
+          value = "Wi-Fi";
+        } else if (state.network_is_ethernet) {
+          value = "Ethernet";
+        } else {
+          value = state.network_name;
+        }
+
+        if (state.network_connected) {
+          if (!state.network_name.empty()) {
+            detail = truncate_text(state.network_name, 12);
+          }
+          if (!state.network_ip.empty()) {
+            if (!detail.empty()) {
+              detail += "  ";
+            }
+            detail += state.network_ip;
+          }
+          if (detail.empty()) {
+            detail = state.network_device;
+          }
+        }
+      }
+
+      draw_text_right(cr, value, state.width - state.pad - chevron_space, label_y, value_size,
+          state.network_available ? state.foreground : state.muted);
+      draw_text_right(cr, detail, state.width - state.pad - chevron_space, detail_y, 9.5 * state.scale, state.muted);
+
+      if (state.network_available) {
+        draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 10.0 * state.scale, chevron_size,
+            state.muted, state.network_expanded);
+      }
+    }
+
+    if (!state.network_expanded || !state.network_available) {
+      return;
+    }
+
+    const auto layout = get_network_layout(state);
+    const double panel_x = state.pad;
+    const double panel_right = state.width - state.pad;
+    const double switch_width = 38.0 * state.scale;
+    const double switch_height = 20.0 * state.scale;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, panel_x, layout.panel_top);
+    cairo_line_to(cr, panel_right, layout.panel_top);
+    cairo_stroke(cr);
+
+    const double wifi_center_y = layout.wifi_row_y + layout.wifi_row_height / 2.0;
+    draw_wifi(cr, panel_x, wifi_center_y - 9.0 * state.scale, 18.0 * state.scale,
+        state.network_wifi_enabled ? 70 : 0,
+        state.network_wifi_hw && state.network_wifi_enabled ? state.foreground : state.muted);
+    draw_text_left(cr, "Wi-Fi", panel_x + 26.0 * state.scale, wifi_center_y, label_size,
+        state.network_wifi_hw ? state.foreground : state.muted);
+
+    if (!state.network_wifi_hw) {
+      draw_text_right(cr, "No hardware", panel_right, wifi_center_y, 9.5 * state.scale, state.muted);
+    } else {
+      const double switch_x = panel_right - switch_width;
+      draw_switch(cr, switch_x, wifi_center_y - switch_height / 2.0, switch_width, switch_height,
+          state.network_wifi_enabled, state.foreground, state.border, state.background, state.muted);
+    }
+
+    const double list_height =
+        layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
+
+    if (layout.visible_rows > 0) {
+      if (state.networks.empty()) {
+        draw_text_left(cr, "No networks found", panel_x, layout.list_top + layout.list_row_height / 2.0,
+            10.0 * state.scale, state.muted);
+      } else {
+        for (int i = 0; i < layout.visible_rows; i++) {
+          const int index = state.network_scroll + i;
+
+          if (index >= static_cast<int>(state.networks.size())) {
+            break;
+          }
+
+          const auto& entry = state.networks[index];
+          const double item_y = layout.list_top + i * layout.list_row_height;
+          const double center_y = item_y + layout.list_row_height / 2.0;
+          const double item_pad = 4.0 * state.scale;
+          const rgb text_color =
+              entry.active || entry.saved ? state.foreground : state.muted;
+
+          if (entry.active) {
+            rounded_rect(cr, panel_x - item_pad, item_y + 1.0, panel_right - panel_x + 2.0 * item_pad,
+                layout.list_row_height - 2.0, 4.0 * state.scale);
+            set_source(cr, mix(state.background, state.foreground, 0.10));
+            cairo_fill(cr);
+          }
+
+          draw_wifi(cr, panel_x, center_y - 8.0 * state.scale, 16.0 * state.scale, entry.signal, text_color);
+          draw_text_left(cr, truncate_text(entry.ssid, 22), panel_x + 22.0 * state.scale, center_y,
+              10.0 * state.scale, text_color);
+
+          double right = panel_right;
+          if (entry.active) {
+            draw_check(cr, right - 12.0 * state.scale, center_y - 6.0 * state.scale, 12.0 * state.scale,
+                state.foreground);
+            right -= 17.0 * state.scale;
+          }
+          if (entry.secure) {
+            draw_lock(cr, right - 11.0 * state.scale, center_y - 7.0 * state.scale, 11.0 * state.scale,
+                state.muted);
+          }
+        }
+      }
+    } else {
+      const string hint = !state.network_wifi_hw ? "No Wi-Fi hardware" : "Wi-Fi is off";
+      draw_text_left(cr, hint, panel_x, layout.list_top + layout.hint_height / 2.0, 10.0 * state.scale,
+          state.muted);
+    }
+
+    if (!state.network_message.empty()) {
+      const double message_y = layout.list_top + list_height + layout.message_height / 2.0;
+      draw_text_left(cr, state.network_message, panel_x, message_y, 9.5 * state.scale, state.foreground);
     }
   }
 
@@ -739,7 +1509,7 @@ namespace {
       state.header_height = static_cast<int>(std::round(30.0 * scale));
       state.row_height = static_cast<int>(std::round(56.0 * scale));
       state.width = static_cast<int>(std::round(300.0 * scale));
-      state.height = state.pad + state.header_height + 3 * state.row_height + state.pad;
+      state.height = popup_height(state);
       state.font = settings.font.empty() ? "sans" : settings.font;
 
       state.background = make_rgb(settings.background, {0.06, 0.06, 0.07});
@@ -753,6 +1523,8 @@ namespace {
       read_brightness(state);
       init_battery(state, settings.battery_name);
       read_battery(state);
+      read_network(state);
+      state.last_network_refresh = std::chrono::steady_clock::now();
 
       const int margin = static_cast<int>(std::round(4.0 * scale));
       int pointer_x = settings.bar_x + settings.bar_width / 2;
@@ -833,10 +1605,40 @@ namespace {
       const double track_width = state.width - state.pad - track_x;
       const double volume_row_y = state.pad + state.header_height;
       const double brightness_row_y = volume_row_y + state.row_height;
+      const double network_row_y = volume_row_y + 3 * state.row_height;
 
       const auto redraw = [&] {
         paint(connection, pixmap, visual, state);
         present(connection, pixmap, window, gc, state);
+      };
+
+      const auto sync_size = [&] {
+        const int new_height = popup_height(state);
+
+        if (new_height == state.height) {
+          return false;
+        }
+
+        state.height = new_height;
+
+        const int new_y = settings.bar_bottom ? settings.bar_y - state.height - margin
+                                              : settings.bar_y + settings.bar_height + margin;
+        const int max_y = std::max(margin, static_cast<int>(screen->height_in_pixels) - state.height - margin);
+        state.y = std::clamp(new_y, margin, max_y);
+
+        if (pixmap != XCB_NONE) {
+          xcb_free_pixmap(connection, pixmap);
+        }
+
+        pixmap = xcb_generate_id(connection);
+        xcb_create_pixmap(connection, screen->root_depth, pixmap, window, state.width, state.height);
+
+        const uint32_t geometry[] = {static_cast<uint32_t>(state.y), static_cast<uint32_t>(state.height)};
+        xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_HEIGHT, geometry);
+
+        redraw();
+        xcb_flush(connection);
+        return true;
       };
 
       redraw();
@@ -849,7 +1651,9 @@ namespace {
         if (now - last_refresh >= std::chrono::seconds(1)) {
           last_refresh = now;
           if (values_changed_by_refresh(state)) {
-            redraw();
+            if (!sync_size()) {
+              redraw();
+            }
           }
         }
       };
@@ -911,6 +1715,20 @@ namespace {
                   apply_brightness(state, true);
                   redraw();
                 }
+              } else if (state.network_expanded && state.network_available) {
+                const auto layout = get_network_layout(state);
+
+                if (layout.visible_rows > 0) {
+                  const double list_bottom = layout.list_top + layout.visible_rows * layout.list_row_height;
+
+                  if (pointer_y_pos >= layout.list_top && pointer_y_pos < list_bottom) {
+                    const int max_scroll = std::max(
+                        0, static_cast<int>(state.networks.size()) - layout.visible_rows);
+                    state.network_scroll =
+                        std::clamp(state.network_scroll + (button->detail == 4 ? -1 : 1), 0, max_scroll);
+                    redraw();
+                  }
+                }
               }
 
               break;
@@ -935,6 +1753,47 @@ namespace {
                 state.dragging = drag_target::BRIGHTNESS;
                 apply_brightness(state, true);
                 redraw();
+              }
+            } else if (button->detail == 1 && pointer_y_pos >= network_row_y &&
+                pointer_y_pos < network_row_y + state.row_height) {
+              if (state.network_available) {
+                state.network_expanded = !state.network_expanded;
+                state.network_scroll = 0;
+
+                if (state.network_expanded) {
+                  read_network(state);
+                  state.last_network_refresh = std::chrono::steady_clock::now();
+                }
+
+                if (!sync_size()) {
+                  redraw();
+                }
+              }
+            } else if (button->detail == 1 && state.network_expanded && state.network_available) {
+              const auto layout = get_network_layout(state);
+              const double wifi_center_y = layout.wifi_row_y + layout.wifi_row_height / 2.0;
+              const double switch_width = 38.0 * state.scale;
+              const double switch_height = 20.0 * state.scale;
+              const double switch_x = state.width - state.pad - switch_width;
+              const double switch_top = wifi_center_y - switch_height / 2.0;
+
+              if (state.network_wifi_hw && pointer_x_pos >= switch_x &&
+                  pointer_x_pos < switch_x + switch_width && pointer_y_pos >= switch_top &&
+                  pointer_y_pos < switch_top + switch_height) {
+                toggle_wifi(state);
+
+                if (!sync_size()) {
+                  redraw();
+                }
+              } else if (layout.visible_rows > 0 && pointer_y_pos >= layout.list_top &&
+                  pointer_y_pos < layout.list_top + layout.visible_rows * layout.list_row_height) {
+                const int row = static_cast<int>((pointer_y_pos - layout.list_top) / layout.list_row_height);
+                const int index = state.network_scroll + row;
+
+                if (index >= 0 && index < static_cast<int>(state.networks.size())) {
+                  connect_network(state, state.networks[index]);
+                  redraw();
+                }
               }
             }
 
