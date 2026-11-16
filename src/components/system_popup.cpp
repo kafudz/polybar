@@ -155,13 +155,13 @@ namespace {
   network_layout get_network_layout(const controls_state& state) {
     network_layout layout;
     layout.panel_top = state.pad + state.header_height + 4 * state.row_height;
-    layout.inner_pad = 10.0 * state.scale;
+    layout.inner_pad = 14.0 * state.scale;
     layout.wifi_row_y = layout.panel_top + layout.inner_pad;
-    layout.wifi_row_height = 30.0 * state.scale;
+    layout.wifi_row_height = 38.0 * state.scale;
     layout.list_top = layout.wifi_row_y + layout.wifi_row_height;
-    layout.list_row_height = 28.0 * state.scale;
-    layout.hint_height = 22.0 * state.scale;
-    layout.message_height = 20.0 * state.scale;
+    layout.list_row_height = 34.0 * state.scale;
+    layout.hint_height = 30.0 * state.scale;
+    layout.message_height = 26.0 * state.scale;
     layout.visible_rows = state.network_wifi_hw && state.network_wifi_enabled ? 5 : 0;
     return layout;
   }
@@ -1308,7 +1308,7 @@ namespace {
     cairo_stroke(cr);
 
     const double icon_size = 20.0 * state.scale;
-    const double label_x = state.pad + icon_size + 10.0 * state.scale;
+    const double label_x = state.pad + icon_size + 12.0 * state.scale;
     const double track_x = label_x;
     const double track_width = state.width - state.pad - track_x;
     const double slider_height = std::max(4.0, 6.0 * state.scale);
@@ -1317,12 +1317,12 @@ namespace {
 
     for (int row = 0; row < 3; row++) {
       const double row_y = row_top + row * state.row_height;
-      const double label_y = row_y + 15.0 * state.scale;
-      const double track_y = row_y + 38.0 * state.scale;
+      const double label_y = row_y + 18.0 * state.scale;
+      const double track_y = row_y + 44.0 * state.scale;
 
       if (row == 0) {
         const rgb icon_color = state.volume_available ? state.foreground : state.muted;
-        draw_speaker(cr, state.pad, row_y + 6.0 * state.scale, icon_size, icon_color, state.muted_state);
+        draw_speaker(cr, state.pad, row_y + 10.0 * state.scale, icon_size, icon_color, state.muted_state);
         draw_text_left(cr, "Volume", label_x, label_y, label_size,
             state.volume_available ? state.foreground : state.muted);
 
@@ -1337,7 +1337,7 @@ namespace {
             state.border, fill, state.foreground, state.volume_available);
       } else if (row == 1) {
         const rgb icon_color = state.brightness_available ? state.foreground : state.muted;
-        draw_sun(cr, state.pad, row_y + 6.0 * state.scale, icon_size, icon_color);
+        draw_sun(cr, state.pad, row_y + 10.0 * state.scale, icon_size, icon_color);
         draw_text_left(cr, "Brightness", label_x, label_y, label_size,
             state.brightness_available ? state.foreground : state.muted);
 
@@ -1352,7 +1352,7 @@ namespace {
         const bool low = state.battery_available && state.battery_percent <= 15 &&
             state.battery_status != "Charging" && state.battery_status != "Full";
         const rgb icon_color = !state.battery_available ? state.muted : (low ? state.alert : state.foreground);
-        draw_battery(cr, state.pad, row_y + 6.0 * state.scale, icon_size,
+        draw_battery(cr, state.pad, row_y + 10.0 * state.scale, icon_size,
             state.battery_available ? state.battery_percent : 0, icon_color, state.border);
         draw_text_left(cr, "Battery", label_x, label_y, label_size,
             state.battery_available ? state.foreground : state.muted);
@@ -1374,18 +1374,18 @@ namespace {
     // Network row.
     {
       const double row_y = row_top + 3 * state.row_height;
-      const double label_y = row_y + 15.0 * state.scale;
-      const double detail_y = row_y + 34.0 * state.scale;
+      const double label_y = row_y + 18.0 * state.scale;
+      const double detail_y = row_y + 42.0 * state.scale;
       const double chevron_size = 14.0 * state.scale;
       const double chevron_space = state.network_available ? 18.0 * state.scale : 0.0;
       const rgb icon_color = state.network_available ? state.foreground : state.muted;
 
       if (state.network_is_wifi) {
-        draw_wifi(cr, state.pad, row_y + 6.0 * state.scale, icon_size, state.network_signal, icon_color);
+        draw_wifi(cr, state.pad, row_y + 10.0 * state.scale, icon_size, state.network_signal, icon_color);
       } else if (state.network_is_ethernet) {
-        draw_ethernet(cr, state.pad, row_y + 6.0 * state.scale, icon_size, icon_color);
+        draw_ethernet(cr, state.pad, row_y + 10.0 * state.scale, icon_size, icon_color);
       } else {
-        draw_wifi(cr, state.pad, row_y + 6.0 * state.scale, icon_size, 0, state.muted);
+        draw_wifi(cr, state.pad, row_y + 10.0 * state.scale, icon_size, 0, state.muted);
       }
 
       draw_text_left(cr, "Network", label_x, label_y, label_size,
@@ -1426,7 +1426,7 @@ namespace {
       draw_text_right(cr, detail, state.width - state.pad - chevron_space, detail_y, 12.0 * state.scale, state.muted);
 
       if (state.network_available) {
-        draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 10.0 * state.scale, chevron_size,
+        draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 12.0 * state.scale, chevron_size,
             state.muted, state.network_expanded);
       }
     }
@@ -1451,7 +1451,7 @@ namespace {
     draw_wifi(cr, panel_x, wifi_center_y - 9.0 * state.scale, 18.0 * state.scale,
         state.network_wifi_enabled ? 70 : 0,
         state.network_wifi_hw && state.network_wifi_enabled ? state.foreground : state.muted);
-    draw_text_left(cr, "Wi-Fi", panel_x + 26.0 * state.scale, wifi_center_y, label_size,
+    draw_text_left(cr, "Wi-Fi", panel_x + 30.0 * state.scale, wifi_center_y, label_size,
         state.network_wifi_hw ? state.foreground : state.muted);
 
     if (!state.network_wifi_hw) {
@@ -1466,11 +1466,11 @@ namespace {
         layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
 
     if (state.network_password_prompt) {
-      const double prompt_label_y = layout.list_top + 8.0 * state.scale;
-      const double input_height = 30.0 * state.scale;
-      const double input_top = prompt_label_y + 9.0 * state.scale;
+      const double prompt_label_y = layout.list_top + 10.0 * state.scale;
+      const double input_height = 36.0 * state.scale;
+      const double input_top = prompt_label_y + 12.0 * state.scale;
       const double input_width = panel_right - panel_x;
-      const double input_text_x = panel_x + 10.0 * state.scale;
+      const double input_text_x = panel_x + 14.0 * state.scale;
       const double input_center_y = input_top + input_height / 2.0;
 
       draw_text_left(cr, "Password for " + truncate_text(state.network_password_ssid, 20), panel_x,
@@ -1490,12 +1490,12 @@ namespace {
       cairo_new_path(cr);
       set_source(cr, state.foreground);
       cairo_set_line_width(cr, 1.5);
-      cairo_move_to(cr, caret_x, input_top + 7.0 * state.scale);
-      cairo_line_to(cr, caret_x, input_top + input_height - 7.0 * state.scale);
+      cairo_move_to(cr, caret_x, input_top + 10.0 * state.scale);
+      cairo_line_to(cr, caret_x, input_top + input_height - 10.0 * state.scale);
       cairo_stroke(cr);
 
       draw_text_left(cr, "Enter to connect · Esc to cancel", panel_x,
-          input_top + input_height + 13.0 * state.scale, 12.0 * state.scale, state.muted);
+          input_top + input_height + 16.0 * state.scale, 12.0 * state.scale, state.muted);
     } else if (layout.visible_rows > 0) {
       if (state.networks.empty()) {
         draw_text_left(cr, "No networks found", panel_x, layout.list_top + layout.list_row_height / 2.0,
@@ -1511,19 +1511,19 @@ namespace {
           const auto& entry = state.networks[index];
           const double item_y = layout.list_top + i * layout.list_row_height;
           const double center_y = item_y + layout.list_row_height / 2.0;
-          const double item_pad = 4.0 * state.scale;
+          const double item_pad = 6.0 * state.scale;
           const rgb text_color =
               entry.active || entry.saved ? state.foreground : state.muted;
 
           if (entry.active) {
-            rounded_rect(cr, panel_x - item_pad, item_y + 1.0, panel_right - panel_x + 2.0 * item_pad,
-                layout.list_row_height - 2.0, 4.0 * state.scale);
+            rounded_rect(cr, panel_x - item_pad, item_y + 2.0, panel_right - panel_x + 2.0 * item_pad,
+                layout.list_row_height - 4.0, 4.0 * state.scale);
             set_source(cr, mix(state.background, state.foreground, 0.10));
             cairo_fill(cr);
           }
 
           draw_wifi(cr, panel_x, center_y - 8.0 * state.scale, 16.0 * state.scale, entry.signal, text_color);
-          draw_text_left(cr, truncate_text(entry.ssid, 22), panel_x + 22.0 * state.scale, center_y,
+          draw_text_left(cr, truncate_text(entry.ssid, 22), panel_x + 28.0 * state.scale, center_y,
               12.0 * state.scale, text_color);
 
           double right = panel_right;
@@ -1627,10 +1627,10 @@ namespace {
 
       controls_state state;
       state.scale = scale;
-      state.pad = static_cast<int>(std::round(14.0 * scale));
-      state.header_height = static_cast<int>(std::round(30.0 * scale));
-      state.row_height = static_cast<int>(std::round(56.0 * scale));
-      state.width = static_cast<int>(std::round(300.0 * scale));
+      state.pad = static_cast<int>(std::round(18.0 * scale));
+      state.header_height = static_cast<int>(std::round(36.0 * scale));
+      state.row_height = static_cast<int>(std::round(64.0 * scale));
+      state.width = static_cast<int>(std::round(320.0 * scale));
       state.height = popup_height(state);
       state.font = settings.font.empty() ? "sans" : settings.font;
 
@@ -1737,7 +1737,7 @@ namespace {
       const auto keymap = get_keymap(connection);
 
       const double icon_size = 20.0 * state.scale;
-      const double label_x = state.pad + icon_size + 10.0 * state.scale;
+      const double label_x = state.pad + icon_size + 12.0 * state.scale;
       const double track_x = label_x;
       const double track_width = state.width - state.pad - track_x;
       const double volume_row_y = state.pad + state.header_height;

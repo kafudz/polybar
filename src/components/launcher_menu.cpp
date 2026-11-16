@@ -488,8 +488,8 @@ namespace {
     const int count = static_cast<int>(filtered_entries(state).size());
     state.visible_rows = std::clamp(count, 1, MAX_VISIBLE_ROWS);
     state.footer_top = state.list_top + state.visible_rows * state.row_height +
-        static_cast<int>(std::round(4.0 * state.scale));
-    state.height = state.footer_top + static_cast<int>(std::round(20.0 * state.scale)) + state.pad;
+        static_cast<int>(std::round(8.0 * state.scale));
+    state.height = state.footer_top + static_cast<int>(std::round(28.0 * state.scale)) + state.pad;
 
     state.x = (screen_width - state.width) / 2;
     state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
@@ -563,8 +563,8 @@ namespace {
     set_source(cr, state.input);
     cairo_fill(cr);
 
-    const double input_text_x = state.pad + 10.0 * state.scale;
-    const double input_text_right = state.width - state.pad - 10.0 * state.scale;
+    const double input_text_x = state.pad + 14.0 * state.scale;
+    const double input_text_right = state.width - state.pad - 14.0 * state.scale;
     const double input_center_y = state.pad + state.search_height / 2.0;
     const double input_size = 12.0 * state.scale;
     const double input_max_width = input_text_right - input_text_x - 2.0 * state.scale;
@@ -578,8 +578,8 @@ namespace {
       const double caret_x = std::min(input_text_right, input_text_x + text_width(cr, visible_query, input_size) + 1.0);
       set_source(cr, state.foreground);
       cairo_set_line_width(cr, 1.0);
-      cairo_move_to(cr, caret_x, state.pad + 8.0 * state.scale);
-      cairo_line_to(cr, caret_x, state.pad + state.search_height - 8.0 * state.scale);
+      cairo_move_to(cr, caret_x, state.pad + 11.0 * state.scale);
+      cairo_line_to(cr, caret_x, state.pad + state.search_height - 11.0 * state.scale);
       cairo_stroke(cr);
     }
 
@@ -588,7 +588,7 @@ namespace {
     const double command_size = 12.0 * state.scale;
 
     if (entries.empty()) {
-      draw_text_left(cr, "No applications found", state.pad + 4.0 * state.scale,
+      draw_text_left(cr, "No applications found", state.pad + 16.0 * state.scale,
           state.list_top + state.row_height / 2.0, 12.0 * state.scale, state.muted);
     } else {
       const int scroll = std::clamp(state.scroll, 0, std::max(0, static_cast<int>(entries.size()) - 1));
@@ -604,15 +604,15 @@ namespace {
         const double center_y = row_top + state.row_height / 2.0;
 
         if (index == state.active) {
-          rounded_rect(cr, state.pad, row_top + 1.0 * state.scale, state.width - 2.0 * state.pad,
-              state.row_height - 2.0 * state.scale, 4.0 * state.scale);
+          rounded_rect(cr, state.pad, row_top + 2.0 * state.scale, state.width - 2.0 * state.pad,
+              state.row_height - 4.0 * state.scale, 4.0 * state.scale);
           set_source(cr, state.hover);
           cairo_fill(cr);
         }
 
         const launcher_entry& entry = *entries[index];
-        const double row_text_x = state.pad + 12.0 * state.scale;
-        const double row_text_right = state.width - state.pad - 12.0 * state.scale;
+        const double row_text_x = state.pad + 16.0 * state.scale;
+        const double row_text_right = state.width - state.pad - 16.0 * state.scale;
         const double row_text_width = row_text_right - row_text_x;
         const double command_max_width = row_text_width * 0.5;
         const double command_width = std::min(command_max_width, text_width(cr, entry.exec, command_size));
@@ -628,13 +628,13 @@ namespace {
       }
     }
 
-    const double footer_y = state.footer_top + 10.0 * state.scale;
+    const double footer_y = state.footer_top + 14.0 * state.scale;
     const string count = entries.empty() ? "No matches"
                                          : std::to_string(entries.size()) +
             (entries.size() == 1 ? " application" : " applications");
 
-    draw_text_left(cr, count, state.pad + 2.0 * state.scale, footer_y, 12.0 * state.scale, state.muted);
-    draw_text_right(cr, "Up/Down · Enter · Esc", state.width - state.pad - 2.0 * state.scale, footer_y,
+    draw_text_left(cr, count, state.pad, footer_y, 12.0 * state.scale, state.muted);
+    draw_text_right(cr, "Up/Down · Enter · Esc", state.width - state.pad, footer_y,
         12.0 * state.scale, state.muted);
 
     cairo_destroy(cr);
@@ -821,11 +821,11 @@ namespace {
       const double scale = std::max(1.0, settings.dpi / 96.0);
       launcher_state state;
       state.scale = scale;
-      state.pad = static_cast<int>(std::round(12.0 * scale));
-      state.search_height = static_cast<int>(std::round(34.0 * scale));
-      state.row_height = static_cast<int>(std::round(30.0 * scale));
-      state.width = static_cast<int>(std::round(480.0 * scale));
-      state.list_top = state.pad + state.search_height + static_cast<int>(std::round(6.0 * scale));
+      state.pad = static_cast<int>(std::round(16.0 * scale));
+      state.search_height = static_cast<int>(std::round(42.0 * scale));
+      state.row_height = static_cast<int>(std::round(38.0 * scale));
+      state.width = static_cast<int>(std::round(520.0 * scale));
+      state.list_top = state.pad + state.search_height + static_cast<int>(std::round(10.0 * scale));
       state.font = settings.font.empty() ? "sans" : settings.font;
       state.entries = load_entries();
 

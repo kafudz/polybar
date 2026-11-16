@@ -39,6 +39,8 @@ by [@stringlapse](https://github.com/stringlapse).
   with `Terminal=true`.
 
 ### Changed
+- `internal/launcher` and the system popup now use more generous vertical and horizontal padding, so rows, labels,
+  and the search field no longer feel cramped at the larger font size.
 - `internal/launcher`: The popup now shows up to 15 applications at once and dynamically resizes to the number of
   matching entries as the search filter changes.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
