@@ -17,6 +17,7 @@ struct power_menu_settings {
   int bar_width{0};
   int bar_height{0};
   bool bar_bottom{false};
+  bool centered{false};
   double dpi{96.0};
   string font{"sans"};
   rgba background{0xFF000000};
@@ -30,7 +31,8 @@ struct power_menu_settings {
 
 namespace power_menu {
   /**
-   * Open the power menu popup below (or above) the bar.
+   * Open the power menu popup below (or above) the bar, or in the center of
+   * the screen when `settings.centered` is set.
    *
    * If the popup is already open, a close request is issued instead.
    */

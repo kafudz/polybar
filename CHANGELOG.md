@@ -31,6 +31,8 @@ by [@stringlapse](https://github.com/stringlapse).
   Left-clicking the module opens the popup, which can be controlled with the mouse or the arrow keys and closes on
   Escape or when clicking anywhere outside an action. The commands can be changed with `lock-command`,
   `logout-command`, `reboot-command`, and `shutdown-command`.
+  The `popup-center` action opens the popup in the center of the screen instead of next to the bar, which is useful
+  for keyboard shortcuts.
 
 ### Changed
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.

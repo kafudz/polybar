@@ -457,29 +457,30 @@ namespace {
       state.hover = mix(state.background, state.foreground, 0.10);
 
       const int margin = static_cast<int>(std::round(4.0 * scale));
-      int pointer_x = settings.bar_x + settings.bar_width / 2;
-      int pointer_y = settings.bar_y + settings.bar_height / 2;
 
-      xcb_query_pointer_reply_t* pointer_reply = xcb_query_pointer_reply(connection,
-          xcb_query_pointer(connection, screen->root), nullptr);
+      if (settings.centered) {
+        state.x = (static_cast<int>(screen->width_in_pixels) - state.width) / 2;
+        state.y = (static_cast<int>(screen->height_in_pixels) - state.height) / 2;
+      } else {
+        int pointer_x = settings.bar_x + settings.bar_width / 2;
 
-      if (pointer_reply != nullptr) {
-        pointer_x = pointer_reply->root_x;
-        pointer_y = pointer_reply->root_y;
-        std::free(pointer_reply);
+        xcb_query_pointer_reply_t* pointer_reply = xcb_query_pointer_reply(connection,
+            xcb_query_pointer(connection, screen->root), nullptr);
+
+        if (pointer_reply != nullptr) {
+          pointer_x = pointer_reply->root_x;
+          std::free(pointer_reply);
+        }
+
+        state.x = pointer_x - state.width / 2;
+        state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
+                                      : settings.bar_y + settings.bar_height + margin;
       }
-
-      state.x = pointer_x - state.width / 2;
-      state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
-                                    : settings.bar_y + settings.bar_height + margin;
 
       const int max_x = std::max(margin, static_cast<int>(screen->width_in_pixels) - state.width - margin);
       const int max_y = std::max(margin, static_cast<int>(screen->height_in_pixels) - state.height - margin);
       state.x = std::clamp(state.x, margin, max_x);
       state.y = std::clamp(state.y, margin, max_y);
-
-      // Silence unused variable warning on platforms where the pointer reply is not available.
-      (void)pointer_y;
 
       const uint32_t background_pixel = (static_cast<uint32_t>(state.background.r * 255.0) << 16) |
           (static_cast<uint32_t>(state.background.g * 255.0) << 8) |
@@ -534,13 +535,30 @@ namespace {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
 
-      xcb_grab_keyboard_reply_t* keyboard_reply = xcb_grab_keyboard_reply(connection,
-          xcb_grab_keyboard(connection, 0, window, XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC),
-          nullptr);
+      // Keyboard shortcuts such as sxhkd can still hold a keyboard grab while
+      // their command is starting, so retry until the key is released and the
+      // popup can take over Escape and the arrow keys.
+      for (int attempt = 0; attempt < 200; attempt++) {
+        xcb_grab_keyboard_reply_t* keyboard_reply = xcb_grab_keyboard_reply(connection,
+            xcb_grab_keyboard(connection, 0, window, XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC),
+            nullptr);
 
-      if (keyboard_reply != nullptr) {
-        keyboard_grabbed = keyboard_reply->status == XCB_GRAB_STATUS_SUCCESS;
-        std::free(keyboard_reply);
+        const bool success = keyboard_reply != nullptr && keyboard_reply->status == XCB_GRAB_STATUS_SUCCESS;
+
+        if (keyboard_reply != nullptr) {
+          std::free(keyboard_reply);
+        }
+
+        if (success) {
+          keyboard_grabbed = true;
+          break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+
+      if (!keyboard_grabbed) {
+        logger::make().warn("power menu: could not grab the keyboard, Escape and arrow keys are unavailable");
       }
 
       const std::vector<xcb_keysym_t> keymap = get_keymap(connection);

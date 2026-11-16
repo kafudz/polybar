@@ -12,6 +12,7 @@ namespace modules {
    * Left-clicking the module opens a built-in popup with Lock, Log out,
    * Reboot, and Shut down actions. The commands are configurable through
    * `lock-command`, `logout-command`, `reboot-command`, and `shutdown-command`.
+   * The `popup-center` action opens the popup in the center of the screen.
    */
   class power_module : public static_module<power_module> {
    public:
@@ -25,9 +26,10 @@ namespace modules {
     static constexpr auto TYPE = POWER_TYPE;
 
     static constexpr auto EVENT_POPUP = "popup";
+    static constexpr auto EVENT_POPUP_CENTER = "popup-center";
 
    protected:
-    void action_popup();
+    void action_popup(bool centered = false);
 
    private:
     static constexpr const char* TAG_LABEL{"<label>"};

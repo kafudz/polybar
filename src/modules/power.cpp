@@ -12,6 +12,7 @@ namespace modules {
   power_module::power_module(const bar_settings& bar, string name_, const config& config)
       : static_module<power_module>(bar, move(name_), config) {
     m_router->register_action(EVENT_POPUP, [this]() { action_popup(); });
+    m_router->register_action(EVENT_POPUP_CENTER, [this]() { action_popup(true); });
 
     m_lock_command = m_conf.get(name(), "lock-command", "i3lock -n"s);
     m_logout_command = m_conf.get(name(), "logout-command", "bspc quit"s);
@@ -50,13 +51,14 @@ namespace modules {
     return true;
   }
 
-  void power_module::action_popup() {
+  void power_module::action_popup(bool centered) {
     power_menu_settings settings;
     settings.bar_x = m_bar.pos.x;
     settings.bar_y = m_bar.pos.y;
     settings.bar_width = m_bar.size.w;
     settings.bar_height = m_bar.size.h;
     settings.bar_bottom = m_bar.bottom;
+    settings.centered = centered;
     settings.dpi = m_bar.dpi_x > 0 ? m_bar.dpi_x : 96.0;
     settings.background = m_bar.background;
     settings.foreground = m_bar.foreground;

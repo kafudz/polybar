@@ -174,6 +174,11 @@ internal/power
   running anything. The popup can also be navigated with the arrow keys and
   Enter. This action is bound to left click by default.
 
+:``popup-center``:
+  Opens the same power menu popup in the center of the screen instead of below
+  (or above) the bar. Use this for keyboard shortcuts, for example
+  ``polybar-msg action "#power.popup-center"``.
+
 internal/alsa
 ^^^^^^^^^^^^^
 
