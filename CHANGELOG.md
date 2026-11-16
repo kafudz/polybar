@@ -39,6 +39,8 @@ by [@stringlapse](https://github.com/stringlapse).
   with `Terminal=true`.
 
 ### Changed
+- `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
+  font size of 11 px for secondary text and hints, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
 - `internal/pulseaudio`: Volume adjustments now preserve balance instead of volume ratios ([`#3123`](https://github.com/polybar/polybar/issues/3123), [`#3169`](https://github.com/polybar/polybar/pull/3169)) by [`@parmort`](https://github.com/parmort)
 - When the `-r` flag is provided, and RandR reports zero connected active screens, polybar will not restart. This fixes polybar dying on some laptops when the lid is closed. ([`#3078`](https://github.com/polybar/polybar/pull/3078))).

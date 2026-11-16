@@ -350,7 +350,7 @@ namespace {
     const double header_center_y = state.pad + state.header_height / 2.0;
 
     draw_text_left(cr, "Power", state.pad, header_center_y, 12.0 * state.scale, state.foreground);
-    draw_text_right(cr, "Esc to close", state.width - state.pad, header_center_y, 9.5 * state.scale,
+    draw_text_right(cr, "Esc to close", state.width - state.pad, header_center_y, 11.0 * state.scale,
         state.muted);
 
     set_source(cr, state.border);

@@ -463,12 +463,12 @@ namespace {
     const double line2_y = state.weather_top + 33.0 * scale;
 
     if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading weather…", state.pad, line1_y, 10.0 * scale, state.muted);
+      draw_text_left(cr, "Loading weather…", state.pad, line1_y, 11.0 * scale, state.muted);
       return;
     }
 
     if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Weather unavailable", state.pad, line1_y, 10.0 * scale, state.muted);
+      draw_text_left(cr, "Weather unavailable", state.pad, line1_y, 11.0 * scale, state.muted);
       return;
     }
 
@@ -477,7 +477,7 @@ namespace {
     const double icon_y = line1_y - icon_size / 2.0;
     draw_weather_icon(cr, state.weather.condition, icon_x, icon_y, icon_size, state.foreground);
 
-    const double condition_size = 10.0 * scale;
+    const double condition_size = 11.0 * scale;
     const double temperature_size = 11.5 * scale;
     const double temperature_width = text_width(cr, state.weather.temperature, temperature_size);
     const double condition_x = icon_x + icon_size + 8.0 * scale;
@@ -506,7 +506,7 @@ namespace {
     append(state.weather.humidity, "");
     append(state.weather.wind, "");
 
-    const double detail_size = 8.8 * scale;
+    const double detail_size = 11.0 * scale;
     draw_text_left(cr, fit_text(cr, detail, state.width - 2.0 * state.pad, detail_size), state.pad, line2_y,
         detail_size, state.muted);
   }
@@ -626,7 +626,7 @@ namespace {
       const double center_x = grid_x + column * state.cell_width + state.cell_width / 2.0;
       const double center_y = grid_y + state.weekday_height / 2.0;
 
-      draw_text(cr, format_time(day, "%a", state.locale), center_x, center_y, 10.0 * state.scale,
+      draw_text(cr, format_time(day, "%a", state.locale), center_x, center_y, 11.0 * state.scale,
           state.muted);
     }
 

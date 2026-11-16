@@ -1297,7 +1297,7 @@ namespace {
     const double label_size = 11.0 * state.scale;
 
     draw_text_left(cr, "System", state.pad, title_center_y, 12.0 * state.scale, state.foreground);
-    draw_text_right(cr, "Esc to close", state.width - state.pad, title_center_y, 9.5 * state.scale, state.muted);
+    draw_text_right(cr, "Esc to close", state.width - state.pad, title_center_y, 11.0 * state.scale, state.muted);
 
     // Separator below the header.
     set_source(cr, state.border);
@@ -1422,7 +1422,7 @@ namespace {
 
       draw_text_right(cr, value, state.width - state.pad - chevron_space, label_y, value_size,
           state.network_available ? state.foreground : state.muted);
-      draw_text_right(cr, detail, state.width - state.pad - chevron_space, detail_y, 9.5 * state.scale, state.muted);
+      draw_text_right(cr, detail, state.width - state.pad - chevron_space, detail_y, 11.0 * state.scale, state.muted);
 
       if (state.network_available) {
         draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 10.0 * state.scale, chevron_size,
@@ -1454,7 +1454,7 @@ namespace {
         state.network_wifi_hw ? state.foreground : state.muted);
 
     if (!state.network_wifi_hw) {
-      draw_text_right(cr, "No hardware", panel_right, wifi_center_y, 9.5 * state.scale, state.muted);
+      draw_text_right(cr, "No hardware", panel_right, wifi_center_y, 11.0 * state.scale, state.muted);
     } else {
       const double switch_x = panel_right - switch_width;
       draw_switch(cr, switch_x, wifi_center_y - switch_height / 2.0, switch_width, switch_height,
@@ -1473,7 +1473,7 @@ namespace {
       const double input_center_y = input_top + input_height / 2.0;
 
       draw_text_left(cr, "Password for " + truncate_text(state.network_password_ssid, 20), panel_x,
-          prompt_label_y, 10.0 * state.scale, state.muted);
+          prompt_label_y, 11.0 * state.scale, state.muted);
 
       rounded_rect(cr, panel_x, input_top, input_width, input_height, 5.0 * state.scale);
       set_source(cr, mix(state.background, state.foreground, 0.06));
@@ -1494,11 +1494,11 @@ namespace {
       cairo_stroke(cr);
 
       draw_text_left(cr, "Enter to connect · Esc to cancel", panel_x,
-          input_top + input_height + 13.0 * state.scale, 9.5 * state.scale, state.muted);
+          input_top + input_height + 13.0 * state.scale, 11.0 * state.scale, state.muted);
     } else if (layout.visible_rows > 0) {
       if (state.networks.empty()) {
         draw_text_left(cr, "No networks found", panel_x, layout.list_top + layout.list_row_height / 2.0,
-            10.0 * state.scale, state.muted);
+            11.0 * state.scale, state.muted);
       } else {
         for (int i = 0; i < layout.visible_rows; i++) {
           const int index = state.network_scroll + i;
@@ -1523,7 +1523,7 @@ namespace {
 
           draw_wifi(cr, panel_x, center_y - 8.0 * state.scale, 16.0 * state.scale, entry.signal, text_color);
           draw_text_left(cr, truncate_text(entry.ssid, 22), panel_x + 22.0 * state.scale, center_y,
-              10.0 * state.scale, text_color);
+              11.0 * state.scale, text_color);
 
           double right = panel_right;
           if (entry.active) {
@@ -1539,13 +1539,13 @@ namespace {
       }
     } else {
       const string hint = !state.network_wifi_hw ? "No Wi-Fi hardware" : "Wi-Fi is off";
-      draw_text_left(cr, hint, panel_x, layout.list_top + layout.hint_height / 2.0, 10.0 * state.scale,
+      draw_text_left(cr, hint, panel_x, layout.list_top + layout.hint_height / 2.0, 11.0 * state.scale,
           state.muted);
     }
 
     if (!state.network_message.empty()) {
       const double message_y = layout.list_top + list_height + layout.message_height / 2.0;
-      draw_text_left(cr, state.network_message, panel_x, message_y, 9.5 * state.scale, state.foreground);
+      draw_text_left(cr, state.network_message, panel_x, message_y, 11.0 * state.scale, state.foreground);
     }
   }
 
