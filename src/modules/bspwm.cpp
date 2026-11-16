@@ -266,6 +266,9 @@ namespace modules {
 
     m_log.info("%s: Parsing socket data: %s", name(), data);
 
+    // The bar thread renders m_monitors while this update thread rebuilds it.
+    std::lock_guard<std::mutex> guard(m_monitors_lock);
+
     m_monitors.clear();
 
     size_t workspace_n{0U};
@@ -427,6 +430,9 @@ namespace modules {
   }
 
   string bspwm_module::get_output() {
+    // m_monitors is rebuilt on the module's update thread.
+    std::lock_guard<std::mutex> guard(m_monitors_lock);
+
     string output;
     for (m_index = 0U; m_index < m_monitors.size(); m_index++) {
       if (m_index > 0) {
@@ -505,8 +511,19 @@ namespace modules {
     size_t monitor_n{std::strtoul(data.substr(0, separator).c_str(), nullptr, 10)};
     string workspace_n{data.substr(separator + 1)};
 
-    if (monitor_n < m_monitors.size()) {
-      send_command("desktop -f " + m_monitors[monitor_n]->name + ":^" + workspace_n,
+    bool valid_monitor{false};
+    string monitor_name;
+    {
+      std::lock_guard<std::mutex> guard(m_monitors_lock);
+
+      if (monitor_n < m_monitors.size()) {
+        monitor_name = m_monitors[monitor_n]->name;
+        valid_monitor = true;
+      }
+    }
+
+    if (valid_monitor) {
+      send_command("desktop -f " + monitor_name + ":^" + workspace_n,
           "Sending desktop focus command to ipc handler");
     } else {
       m_log.err("%s: Invalid monitor index in command: %s", name(), data);
@@ -528,14 +545,23 @@ namespace modules {
       modifier += ".occupied";
     }
 
+    string monitor_name;
+
     if (m_pinworkspaces) {
       modifier += ".local";
+
+      std::lock_guard<std::mutex> guard(m_monitors_lock);
+
       for (const auto& mon : m_monitors) {
         if (m_bar.monitor->match(mon->name, false) && !mon->focused) {
-          send_command("monitor -f " + mon->name, "Sending monitor focus command to ipc handler");
+          monitor_name = mon->name;
           break;
         }
       }
+    }
+
+    if (!monitor_name.empty()) {
+      send_command("monitor -f " + monitor_name, "Sending monitor focus command to ipc handler");
     }
 
     send_command("desktop -f " + scrolldir + modifier, "Sending desktop " + scrolldir + " command to ipc handler");

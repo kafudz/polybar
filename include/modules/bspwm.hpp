@@ -99,6 +99,12 @@ namespace modules {
 
     // used while formatting output
     size_t m_index{0U};
+
+    /**
+     * Protects m_monitors between the update thread (which rebuilds it for
+     * every bspwm report) and the bar thread (which renders it).
+     */
+    std::mutex m_monitors_lock;
   };
 }  // namespace modules
 

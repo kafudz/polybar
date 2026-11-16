@@ -61,6 +61,8 @@ by [@stringlapse](https://github.com/stringlapse).
 - Modules with an `interval` smaller than 1ms are rejected instead of crashing with a division by zero.
 - Sockets: `recv` can no longer write one byte past its buffer, is retried after `EINTR`, and no longer cuts data off at an embedded NUL byte. Interrupted `poll` calls are not treated as errors.
 - `poll` wrappers no longer inspect `revents` after a failed `poll` call (it was uninitialized).
+- `internal/launcher`: Opening the popup no longer aborts on desktop files that contain blank lines. `strip_trailing_newline` no longer indexes an empty string, and CRLF line endings are handled.
+- `internal/bspwm`: The workspace list could be rebuilt by the update thread while the bar was rendering it, which could crash polybar during rapid desktop switches. The monitor data is now synchronized.
 
 ## [3.7.2] - 2024-08-17
 ### Fixed

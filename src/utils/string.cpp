@@ -144,7 +144,7 @@ string strip(const string& haystack, char needle) {
  */
 string strip_trailing_newline(const string& haystack) {
   string str(haystack);
-  if (str[str.length() - 1] == '\n') {
+  if (!str.empty() && str.back() == '\n') {
     str.erase(str.length() - 1, 1);
   }
   return str;

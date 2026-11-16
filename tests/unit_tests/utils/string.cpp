@@ -99,6 +99,8 @@ TEST(String, squeeze) {
 TEST(String, strip) {
   EXPECT_EQ("Strp", string_util::strip("Striip", 'i'));
   EXPECT_EQ("test\n", string_util::strip_trailing_newline("test\n\n"));
+  EXPECT_EQ("", string_util::strip_trailing_newline(""));
+  EXPECT_EQ("test", string_util::strip_trailing_newline("test"));
 }
 
 TEST(String, trim) {

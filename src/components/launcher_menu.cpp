@@ -316,7 +316,11 @@ namespace {
     string line;
 
     while (std::getline(file, line)) {
-      line = string_util::strip_trailing_newline(std::move(line));
+      // getline already removes the newline, but files with CRLF line endings
+      // leave a trailing carriage return that would end up in the values.
+      if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+      }
 
       if (line.empty() || line[0] == '#') {
         continue;
