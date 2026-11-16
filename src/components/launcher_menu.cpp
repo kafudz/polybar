@@ -28,6 +28,7 @@ POLYBAR_NS
 
 namespace {
   constexpr double PI = 3.14159265358979323846;
+  constexpr int MAX_VISIBLE_ROWS = 15;
 
   std::atomic<bool> g_open{false};
   std::atomic<bool> g_close_requested{false};
@@ -477,6 +478,29 @@ namespace {
     state.scroll = 0;
   }
 
+  /**
+   * Sizes the popup to the current number of matches, capped at
+   * MAX_VISIBLE_ROWS. At least one row is always reserved so the empty state
+   * and the footer remain visible.
+   */
+  void update_layout(launcher_state& state, const launcher_menu_settings& settings, int screen_width,
+      int screen_height, int margin) {
+    const int count = static_cast<int>(filtered_entries(state).size());
+    state.visible_rows = std::clamp(count, 1, MAX_VISIBLE_ROWS);
+    state.footer_top = state.list_top + state.visible_rows * state.row_height +
+        static_cast<int>(std::round(4.0 * state.scale));
+    state.height = state.footer_top + static_cast<int>(std::round(20.0 * state.scale)) + state.pad;
+
+    state.x = (screen_width - state.width) / 2;
+    state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
+                                  : settings.bar_y + settings.bar_height + margin;
+
+    const int max_x = std::max(margin, screen_width - state.width - margin);
+    const int max_y = std::max(margin, screen_height - state.height - margin);
+    state.x = std::clamp(state.x, margin, max_x);
+    state.y = std::clamp(state.y, margin, max_y);
+  }
+
   void move_selection(launcher_state& state, int delta) {
     const int count = static_cast<int>(filtered_entries(state).size());
 
@@ -800,12 +824,8 @@ namespace {
       state.pad = static_cast<int>(std::round(12.0 * scale));
       state.search_height = static_cast<int>(std::round(34.0 * scale));
       state.row_height = static_cast<int>(std::round(30.0 * scale));
-      state.visible_rows = 9;
       state.width = static_cast<int>(std::round(480.0 * scale));
       state.list_top = state.pad + state.search_height + static_cast<int>(std::round(6.0 * scale));
-      state.footer_top =
-          state.list_top + state.visible_rows * state.row_height + static_cast<int>(std::round(4.0 * scale));
-      state.height = state.footer_top + static_cast<int>(std::round(20.0 * scale)) + state.pad;
       state.font = settings.font.empty() ? "sans" : settings.font;
       state.entries = load_entries();
 
@@ -817,14 +837,7 @@ namespace {
       state.input = mix(state.background, state.foreground, 0.06);
 
       const int margin = static_cast<int>(std::round(4.0 * scale));
-      state.x = (static_cast<int>(screen->width_in_pixels) - state.width) / 2;
-      state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
-                                    : settings.bar_y + settings.bar_height + margin;
-
-      const int max_x = std::max(margin, static_cast<int>(screen->width_in_pixels) - state.width - margin);
-      const int max_y = std::max(margin, static_cast<int>(screen->height_in_pixels) - state.height - margin);
-      state.x = std::clamp(state.x, margin, max_x);
-      state.y = std::clamp(state.y, margin, max_y);
+      update_layout(state, settings, screen->width_in_pixels, screen->height_in_pixels, margin);
 
       const uint32_t background_pixel = (static_cast<uint32_t>(state.background.r * 255.0) << 16) |
           (static_cast<uint32_t>(state.background.g * 255.0) << 8) |
@@ -904,6 +917,29 @@ namespace {
       const auto redraw = [&] {
         paint(connection, pixmap, visual, state);
         present(connection, pixmap, window, gc, state);
+      };
+
+      const auto resize = [&] {
+        const int old_height = state.height;
+        update_layout(state, settings, screen->width_in_pixels, screen->height_in_pixels, margin);
+
+        if (state.height == old_height) {
+          return;
+        }
+
+        if (pixmap != XCB_NONE) {
+          xcb_free_pixmap(connection, pixmap);
+        }
+
+        pixmap = xcb_generate_id(connection);
+        xcb_create_pixmap(connection, screen->root_depth, pixmap, window, state.width, state.height);
+
+        const uint32_t values[] = {static_cast<uint32_t>(state.x), static_cast<uint32_t>(state.y),
+            static_cast<uint32_t>(state.width), static_cast<uint32_t>(state.height)};
+        xcb_configure_window(connection, window,
+            XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT,
+            values);
+        xcb_flush(connection);
       };
 
       redraw();
@@ -1017,10 +1053,12 @@ namespace {
             } else if (keysym == 0xFF08) { // BackSpace
               remove_last_codepoint(state.query);
               reset_selection(state);
+              resize();
               redraw();
             } else if (control && (keysym == 'u' || keysym == 'U')) {
               state.query.clear();
               reset_selection(state);
+              resize();
               redraw();
             } else if (!control) {
               const bool altgr = key->state & XCB_MOD_MASK_5;
@@ -1043,6 +1081,7 @@ namespace {
               if (!alt && !super && !text.empty() && state.query.size() < 128) {
                 state.query += text;
                 reset_selection(state);
+                resize();
                 redraw();
               }
             }

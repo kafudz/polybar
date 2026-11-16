@@ -39,6 +39,8 @@ by [@stringlapse](https://github.com/stringlapse).
   with `Terminal=true`.
 
 ### Changed
+- `internal/launcher`: The popup now shows up to 15 applications at once and dynamically resizes to the number of
+  matching entries as the search filter changes.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
   font size of 11 px for secondary text and hints, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
