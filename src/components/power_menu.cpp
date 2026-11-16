@@ -350,7 +350,7 @@ namespace {
     const double header_center_y = state.pad + state.header_height / 2.0;
 
     draw_text_left(cr, "Power", state.pad, header_center_y, 12.0 * state.scale, state.foreground);
-    draw_text_right(cr, "Esc to close", state.width - state.pad, header_center_y, 11.0 * state.scale,
+    draw_text_right(cr, "Esc to close", state.width - state.pad, header_center_y, 12.0 * state.scale,
         state.muted);
 
     set_source(cr, state.border);
@@ -378,7 +378,7 @@ namespace {
 
       draw_row_icon(cr, row, icon_x, center_y - icon_size / 2.0, icon_size,
           row == state.active ? state.foreground : state.muted);
-      draw_text_left(cr, ROW_LABELS[row], label_x, center_y, 11.5 * state.scale, state.foreground);
+      draw_text_left(cr, ROW_LABELS[row], label_x, center_y, 12.0 * state.scale, state.foreground);
     }
 
     cairo_destroy(cr);

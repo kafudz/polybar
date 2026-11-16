@@ -42,12 +42,14 @@ by [@stringlapse](https://github.com/stringlapse).
 - `internal/launcher`: The popup now shows up to 15 applications at once and dynamically resizes to the number of
   matching entries as the search filter changes.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
-  font size of 11 px for secondary text and hints, making the popups easier to read.
+  font size of 12 px, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
 - `internal/pulseaudio`: Volume adjustments now preserve balance instead of volume ratios ([`#3123`](https://github.com/polybar/polybar/issues/3123), [`#3169`](https://github.com/polybar/polybar/pull/3169)) by [`@parmort`](https://github.com/parmort)
 - When the `-r` flag is provided, and RandR reports zero connected active screens, polybar will not restart. This fixes polybar dying on some laptops when the lid is closed. ([`#3078`](https://github.com/polybar/polybar/pull/3078))).
 
 ### Fixed
+- The system popup no longer shows a stray glyph after the battery status (for example next to `Full`), because the
+  trailing newline from the battery status file is now removed.
 - IPC: Messages that are written back to a client could read from a buffer that was already freed when the socket was not immediately writable. The data is now owned by the write request.
 - IPC: The message decoder aborted (debug builds) or mis-tracked its state when an empty message was directly followed by more data in the same read.
 - IPC: A rejected `uv_write` call no longer leaks the write request.

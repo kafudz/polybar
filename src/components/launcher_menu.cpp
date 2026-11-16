@@ -584,12 +584,12 @@ namespace {
     }
 
     const vector<const launcher_entry*> entries = filtered_entries(state);
-    const double name_size = 11.0 * state.scale;
-    const double command_size = 11.0 * state.scale;
+    const double name_size = 12.0 * state.scale;
+    const double command_size = 12.0 * state.scale;
 
     if (entries.empty()) {
       draw_text_left(cr, "No applications found", state.pad + 4.0 * state.scale,
-          state.list_top + state.row_height / 2.0, 11.0 * state.scale, state.muted);
+          state.list_top + state.row_height / 2.0, 12.0 * state.scale, state.muted);
     } else {
       const int scroll = std::clamp(state.scroll, 0, std::max(0, static_cast<int>(entries.size()) - 1));
 
@@ -633,9 +633,9 @@ namespace {
                                          : std::to_string(entries.size()) +
             (entries.size() == 1 ? " application" : " applications");
 
-    draw_text_left(cr, count, state.pad + 2.0 * state.scale, footer_y, 11.0 * state.scale, state.muted);
+    draw_text_left(cr, count, state.pad + 2.0 * state.scale, footer_y, 12.0 * state.scale, state.muted);
     draw_text_right(cr, "Up/Down · Enter · Esc", state.width - state.pad - 2.0 * state.scale, footer_y,
-        11.0 * state.scale, state.muted);
+        12.0 * state.scale, state.muted);
 
     cairo_destroy(cr);
     cairo_surface_flush(surface);
