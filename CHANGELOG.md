@@ -21,8 +21,9 @@ by [@stringlapse](https://github.com/stringlapse).
 - `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: Added a built-in system popup with a volume
   slider, a brightness slider, battery status, and a NetworkManager panel. Left-clicking any of these modules opens
   the popup, which can be controlled with the mouse or the scroll wheel and closes on Escape or when clicking outside
-  of it. The network panel can turn Wi-Fi on or off and connect to visible networks. Left-clicking the volume module
-  now opens this popup; right-click it to toggle mute.
+  of it. The network panel can turn Wi-Fi on or off and connect to visible networks. Secured networks without a
+  saved profile prompt for a password inside the popup; press Enter to connect or Escape to cancel. Left-clicking the
+  volume module now opens this popup; right-click it to toggle mute.
 
 ### Changed
 - `internal/pulseaudio`: Volume adjustments now preserve balance instead of volume ratios ([`#3123`](https://github.com/polybar/polybar/issues/3123), [`#3169`](https://github.com/polybar/polybar/pull/3169)) by [`@parmort`](https://github.com/parmort)

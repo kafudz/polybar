@@ -125,6 +125,9 @@ namespace {
     string network_message{};
     std::chrono::steady_clock::time_point network_message_until{};
     std::chrono::steady_clock::time_point last_network_refresh{};
+    bool network_password_prompt{false};
+    string network_password_ssid{};
+    string network_password_input{};
 
     drag_target dragging{drag_target::NONE};
     bool volume_pending{false};
@@ -235,6 +238,13 @@ namespace {
     set_source(cr, color, alpha);
     cairo_move_to(cr, x - extents.width - extents.x_bearing, center_y - (extents.y_bearing + extents.height / 2.0));
     cairo_show_text(cr, text.c_str());
+  }
+
+  double text_width(cairo_t* cr, const string& text, double size) {
+    cairo_set_font_size(cr, size);
+    cairo_text_extents_t extents{};
+    cairo_text_extents(cr, text.c_str(), &extents);
+    return extents.x_advance;
   }
 
   void draw_speaker(cairo_t* cr, double x, double y, double size, const rgb& color, bool muted) {
@@ -456,12 +466,12 @@ namespace {
     return nullptr;
   }
 
-  std::vector<xcb_keysym_t> get_keymap(xcb_connection_t* connection) {
+  std::vector<std::vector<xcb_keysym_t>> get_keymap(xcb_connection_t* connection) {
     const xcb_setup_t* setup = xcb_get_setup(connection);
     const xcb_keycode_t min_keycode = setup->min_keycode;
     const xcb_keycode_t max_keycode = setup->max_keycode;
 
-    std::vector<xcb_keysym_t> keymap(max_keycode + 1, 0);
+    std::vector<std::vector<xcb_keysym_t>> keymap(max_keycode + 1);
 
     xcb_get_keyboard_mapping_reply_t* reply = xcb_get_keyboard_mapping_reply(connection,
         xcb_get_keyboard_mapping(connection, min_keycode, max_keycode - min_keycode + 1), nullptr);
@@ -474,11 +484,62 @@ namespace {
 
     for (int keycode = min_keycode; keycode <= max_keycode; keycode++) {
       const int index = (keycode - min_keycode) * reply->keysyms_per_keycode;
-      keymap[keycode] = keysyms[index];
+      keymap[keycode].resize(reply->keysyms_per_keycode);
+
+      for (int level = 0; level < reply->keysyms_per_keycode; level++) {
+        keymap[keycode][level] = keysyms[index + level];
+      }
     }
 
     std::free(reply);
     return keymap;
+  }
+
+  int keysym_to_codepoint(xcb_keysym_t keysym) {
+    if (keysym >= 0x20 && keysym <= 0x7E) {
+      return static_cast<int>(keysym);
+    }
+    if (keysym >= 0xA0 && keysym <= 0xFF) {
+      return static_cast<int>(keysym);
+    }
+    if (keysym >= 0xFFB0 && keysym <= 0xFFB9) {
+      return static_cast<int>('0' + (keysym - 0xFFB0));
+    }
+    if (keysym == 0xFFAE) {
+      return '.';
+    }
+    return -1;
+  }
+
+  void append_utf8(string& out, int codepoint) {
+    if (codepoint < 0x80) {
+      out += static_cast<char>(codepoint);
+    } else if (codepoint < 0x800) {
+      out += static_cast<char>(0xC0 | (codepoint >> 6));
+      out += static_cast<char>(0x80 | (codepoint & 0x3F));
+    } else {
+      out += static_cast<char>(0xE0 | (codepoint >> 12));
+      out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+      out += static_cast<char>(0x80 | (codepoint & 0x3F));
+    }
+  }
+
+  string keysym_to_text(xcb_keysym_t keysym, bool caps) {
+    int codepoint = keysym_to_codepoint(keysym);
+
+    if (codepoint < 0) {
+      return {};
+    }
+
+    if (caps && std::isalpha(static_cast<unsigned char>(codepoint))) {
+      codepoint = std::islower(static_cast<unsigned char>(codepoint))
+          ? std::toupper(static_cast<unsigned char>(codepoint))
+          : std::tolower(static_cast<unsigned char>(codepoint));
+    }
+
+    string text;
+    append_utf8(text, codepoint);
+    return text;
   }
 
   int percentage_from_pointer(double pointer_x, double track_x, double track_width) {
@@ -787,7 +848,7 @@ namespace {
     return text;
   }
 
-  bool read_network(controls_state& state) {
+  bool read_network(controls_state& state, bool rescan = false) {
     bool changed = false;
 
     auto radio = run_command_with_status("nmcli -t -f WIFI-HW,WIFI radio 2>/dev/null");
@@ -944,8 +1005,9 @@ namespace {
     vector<network_entry> new_networks;
 
     if (wifi_hw && wifi_enabled && state.network_expanded) {
-      auto wifi_list =
-          run_command_with_status("nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list 2>/dev/null");
+      const string rescan_option = rescan ? "" : " --rescan no";
+      auto wifi_list = run_command_with_status(
+          "nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list" + rescan_option + " 2>/dev/null");
 
       if (wifi_list.first == 0) {
         std::set<string> saved_networks;
@@ -1075,6 +1137,30 @@ namespace {
     state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
   }
 
+  void cancel_password_prompt(controls_state& state) {
+    state.network_password_prompt = false;
+    state.network_password_ssid.clear();
+    state.network_password_input.clear();
+  }
+
+  void submit_network_password(controls_state& state) {
+    if (state.network_password_input.empty()) {
+      set_network_message(state, "Password cannot be empty");
+      return;
+    }
+
+    const string ssid = state.network_password_ssid;
+    const string password = state.network_password_input;
+    const string quoted_ssid = shell_quote(ssid);
+
+    cancel_password_prompt(state);
+    set_network_message(state, "Connecting to " + truncate_text(ssid, 18) + "…", 10);
+    run_async("nmcli device wifi connect " + quoted_ssid + " password " + shell_quote(password) +
+        "; status=$?; if [ $status -ne 0 ]; then nmcli connection delete id " + quoted_ssid +
+        " >/dev/null 2>&1; fi");
+    state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+  }
+
   void connect_network(controls_state& state, const network_entry& entry) {
     if (entry.active) {
       set_network_message(state, "Already connected");
@@ -1082,10 +1168,14 @@ namespace {
     }
 
     if (entry.secure && !entry.saved) {
-      set_network_message(state, "Password required");
+      state.network_password_prompt = true;
+      state.network_password_ssid = entry.ssid;
+      state.network_password_input.clear();
+      state.network_message.clear();
       return;
     }
 
+    cancel_password_prompt(state);
     set_network_message(state, "Connecting to " + truncate_text(entry.ssid, 18) + "…", 10);
     run_async("nmcli device wifi connect " + shell_quote(entry.ssid) + " >/dev/null 2>&1");
     state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
@@ -1188,7 +1278,7 @@ namespace {
 
     const auto now = std::chrono::steady_clock::now();
 
-    if (now - state.last_network_refresh >= std::chrono::seconds(2)) {
+    if (!state.network_password_prompt && now - state.last_network_refresh >= std::chrono::seconds(2)) {
       state.last_network_refresh = now;
       changed = read_network(state) || changed;
     }
@@ -1374,7 +1464,38 @@ namespace {
     const double list_height =
         layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
 
-    if (layout.visible_rows > 0) {
+    if (state.network_password_prompt) {
+      const double prompt_label_y = layout.list_top + 8.0 * state.scale;
+      const double input_height = 30.0 * state.scale;
+      const double input_top = prompt_label_y + 9.0 * state.scale;
+      const double input_width = panel_right - panel_x;
+      const double input_text_x = panel_x + 10.0 * state.scale;
+      const double input_center_y = input_top + input_height / 2.0;
+
+      draw_text_left(cr, "Password for " + truncate_text(state.network_password_ssid, 20), panel_x,
+          prompt_label_y, 10.0 * state.scale, state.muted);
+
+      rounded_rect(cr, panel_x, input_top, input_width, input_height, 5.0 * state.scale);
+      set_source(cr, mix(state.background, state.foreground, 0.06));
+      cairo_fill_preserve(cr);
+      set_source(cr, state.border);
+      cairo_set_line_width(cr, 1.0);
+      cairo_stroke(cr);
+
+      const string masked(std::min<size_t>(state.network_password_input.size(), 30), '*');
+      draw_text_left(cr, masked, input_text_x, input_center_y, 12.0 * state.scale, state.foreground);
+
+      const double caret_x = input_text_x + text_width(cr, masked, 12.0 * state.scale) + 1.0;
+      cairo_new_path(cr);
+      set_source(cr, state.foreground);
+      cairo_set_line_width(cr, 1.5);
+      cairo_move_to(cr, caret_x, input_top + 7.0 * state.scale);
+      cairo_line_to(cr, caret_x, input_top + input_height - 7.0 * state.scale);
+      cairo_stroke(cr);
+
+      draw_text_left(cr, "Enter to connect · Esc to cancel", panel_x,
+          input_top + input_height + 13.0 * state.scale, 9.5 * state.scale, state.muted);
+    } else if (layout.visible_rows > 0) {
       if (state.networks.empty()) {
         draw_text_left(cr, "No networks found", panel_x, layout.list_top + layout.list_row_height / 2.0,
             10.0 * state.scale, state.muted);
@@ -1597,7 +1718,7 @@ namespace {
         std::free(keyboard_reply);
       }
 
-      const std::vector<xcb_keysym_t> keymap = get_keymap(connection);
+      const auto keymap = get_keymap(connection);
 
       const double icon_size = 20.0 * state.scale;
       const double label_x = state.pad + icon_size + 10.0 * state.scale;
@@ -1715,7 +1836,7 @@ namespace {
                   apply_brightness(state, true);
                   redraw();
                 }
-              } else if (state.network_expanded && state.network_available) {
+              } else if (state.network_expanded && state.network_available && !state.network_password_prompt) {
                 const auto layout = get_network_layout(state);
 
                 if (layout.visible_rows > 0) {
@@ -1759,9 +1880,10 @@ namespace {
               if (state.network_available) {
                 state.network_expanded = !state.network_expanded;
                 state.network_scroll = 0;
+                cancel_password_prompt(state);
 
                 if (state.network_expanded) {
-                  read_network(state);
+                  read_network(state, true);
                   state.last_network_refresh = std::chrono::steady_clock::now();
                 }
 
@@ -1780,12 +1902,14 @@ namespace {
               if (state.network_wifi_hw && pointer_x_pos >= switch_x &&
                   pointer_x_pos < switch_x + switch_width && pointer_y_pos >= switch_top &&
                   pointer_y_pos < switch_top + switch_height) {
+                cancel_password_prompt(state);
                 toggle_wifi(state);
 
                 if (!sync_size()) {
                   redraw();
                 }
-              } else if (layout.visible_rows > 0 && pointer_y_pos >= layout.list_top &&
+              } else if (!state.network_password_prompt && layout.visible_rows > 0 &&
+                  pointer_y_pos >= layout.list_top &&
                   pointer_y_pos < layout.list_top + layout.visible_rows * layout.list_row_height) {
                 const int row = static_cast<int>((pointer_y_pos - layout.list_top) / layout.list_row_height);
                 const int index = state.network_scroll + row;
@@ -1840,9 +1964,48 @@ namespace {
 
           case XCB_KEY_PRESS: {
             auto* key = reinterpret_cast<xcb_key_press_event_t*>(event);
-            const xcb_keysym_t keysym = key->detail < keymap.size() ? keymap[key->detail] : 0;
+            static const std::vector<xcb_keysym_t> no_symbols;
+            const auto& symbols = key->detail < keymap.size() ? keymap[key->detail] : no_symbols;
+            const xcb_keysym_t keysym = symbols.empty() ? 0 : symbols[0];
+            const bool shift = key->state & XCB_MOD_MASK_SHIFT;
+            const bool caps = key->state & XCB_MOD_MASK_LOCK;
+            const bool control = key->state & (XCB_MOD_MASK_CONTROL | XCB_MOD_MASK_1);
 
-            if (keysym == 0xFF1B) { // Escape
+            if (state.network_password_prompt) {
+              if (keysym == 0xFF1B) { // Escape
+                cancel_password_prompt(state);
+                redraw();
+              } else if (keysym == 0xFF0D || keysym == 0xFF8D) { // Return, KP_Enter
+                submit_network_password(state);
+                redraw();
+              } else if (keysym == 0xFF08) { // BackSpace
+                if (!state.network_password_input.empty()) {
+                  state.network_password_input.pop_back();
+                  redraw();
+                }
+              } else if (!control) {
+                xcb_keysym_t typed = keysym;
+                const bool altgr = key->state & XCB_MOD_MASK_5;
+                size_t level = 0;
+
+                if (altgr) {
+                  level = shift ? 3 : 2;
+                } else if (shift) {
+                  level = 1;
+                }
+
+                if (level < symbols.size() && symbols[level] != 0) {
+                  typed = symbols[level];
+                }
+
+                const string text = keysym_to_text(typed, caps);
+
+                if (!text.empty() && state.network_password_input.size() < 128) {
+                  state.network_password_input += text;
+                  redraw();
+                }
+              }
+            } else if (keysym == 0xFF1B) { // Escape
               running = false;
             }
 
