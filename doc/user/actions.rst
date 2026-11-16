@@ -184,6 +184,11 @@ internal/pulseaudio
 :``toggle``:
   Toggles between muted and unmuted.
 
+:``popup``:
+  Opens the built-in system popup with volume, brightness, and battery
+  controls. This action is bound to left click by default; right click toggles
+  mute unless ``click-right`` is configured.
+
 internal/xbacklight
 ^^^^^^^^^^^^^^^^^^^
 
@@ -195,6 +200,17 @@ internal/backlight
 
 :``inc``, ``dec``:
   Increases/Decreases screen brightness 5 percentage points.
+
+:``popup``:
+  Opens the built-in system popup with volume, brightness, and battery
+  controls. This action is bound to left click by default.
+
+internal/battery
+^^^^^^^^^^^^^^^^
+
+:``popup``:
+  Opens the built-in system popup with volume, brightness, and battery
+  controls. This action is bound to left click by default.
 
 internal/xkeyboard
 ^^^^^^^^^^^^^^^^^^

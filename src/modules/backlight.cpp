@@ -1,5 +1,6 @@
 #include "modules/backlight.hpp"
 
+#include "components/system_popup.hpp"
 #include "drawtypes/label.hpp"
 #include "drawtypes/progressbar.hpp"
 #include "drawtypes/ramp.hpp"
@@ -27,6 +28,7 @@ namespace modules {
       : inotify_module<backlight_module>(bar, move(name_), config) {
     m_router->register_action(EVENT_DEC, [this]() { action_dec(); });
     m_router->register_action(EVENT_INC, [this]() { action_inc(); });
+    m_router->register_action(EVENT_POPUP, [this]() { action_popup(); });
     auto card = m_conf.get(name(), "card", ""s);
     if (card.empty()) {
       vector<string> backlight_card_names = file_util::list_files(string_util::replace(PATH_BACKLIGHT, "%card%", ""));
@@ -136,6 +138,8 @@ namespace modules {
     // with the cmd handlers
     string output{module::get_output()};
 
+    m_builder->action(mousebtn::LEFT, *this, EVENT_POPUP, "");
+
     if (m_scroll) {
       m_builder->action(mousebtn::SCROLL_UP, *this, EVENT_INC, "");
       m_builder->action(mousebtn::SCROLL_DOWN, *this, EVENT_DEC, "");
@@ -143,7 +147,10 @@ namespace modules {
 
     m_builder->node(output);
 
-    m_builder->action_close();
+    if (m_scroll) {
+      m_builder->action_close();
+      m_builder->action_close();
+    }
     m_builder->action_close();
 
     return m_builder->flush();
@@ -168,6 +175,18 @@ namespace modules {
 
   void backlight_module::action_dec() {
     change_value(-m_scroll_interval);
+  }
+
+  void backlight_module::action_popup() {
+    auto settings = system_popup::make_settings(m_bar, m_conf);
+
+    if (!m_path_backlight.empty()) {
+      const auto separator = m_path_backlight.find_last_of('/');
+      settings.backlight_card =
+          separator == string::npos ? m_path_backlight : m_path_backlight.substr(separator + 1);
+    }
+
+    system_popup::toggle(settings);
   }
 
   void backlight_module::change_value(int value_mod) {

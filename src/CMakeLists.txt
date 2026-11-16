@@ -67,6 +67,7 @@ set(POLY_SOURCES
   ${src_dir}/components/logger.cpp
   ${src_dir}/components/renderer.cpp
   ${src_dir}/components/screen.cpp
+  ${src_dir}/components/system_popup.cpp
   ${src_dir}/components/eventloop.cpp
 
   ${src_dir}/drawtypes/animation.cpp

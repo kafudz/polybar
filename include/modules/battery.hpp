@@ -54,9 +54,11 @@ namespace modules {
     void idle();
     bool on_event(const inotify_event& event);
     string get_format() const;
+    string get_output();
     bool build(builder* builder, const string& tag) const;
 
     static constexpr auto TYPE = BATTERY_TYPE;
+    static constexpr auto EVENT_POPUP = "popup";
 
    protected:
     state current_state();
@@ -65,6 +67,7 @@ namespace modules {
     string current_time();
     string current_consumption();
     void subthread();
+    void action_popup();
 
    private:
     static constexpr const char* FORMAT_CHARGING{"format-charging"};

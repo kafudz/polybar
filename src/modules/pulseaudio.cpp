@@ -1,6 +1,7 @@
 #include "modules/pulseaudio.hpp"
 
 #include "adapters/pulseaudio.hpp"
+#include "components/system_popup.hpp"
 #include "drawtypes/label.hpp"
 #include "drawtypes/progressbar.hpp"
 #include "drawtypes/ramp.hpp"
@@ -19,6 +20,7 @@ namespace modules {
       m_router->register_action(EVENT_DEC, [this]() { action_dec(); });
       m_router->register_action(EVENT_INC, [this]() { action_inc(); });
       m_router->register_action(EVENT_TOGGLE, [this]() { action_toggle(); });
+      m_router->register_action(EVENT_POPUP, [this]() { action_popup(); });
     }
 
     // Load configuration values
@@ -124,9 +126,11 @@ namespace modules {
 
       if (!click_right.empty()) {
         m_builder->action(mousebtn::RIGHT, click_right);
+      } else {
+        m_builder->action(mousebtn::RIGHT, *this, EVENT_TOGGLE, "");
       }
 
-      m_builder->action(mousebtn::LEFT, *this, EVENT_TOGGLE, "");
+      m_builder->action(mousebtn::LEFT, *this, EVENT_POPUP, "");
       if (!m_reverse_scroll) {
         m_builder->action(mousebtn::SCROLL_UP, *this, EVENT_INC, "");
         m_builder->action(mousebtn::SCROLL_DOWN, *this, EVENT_DEC, "");
@@ -172,6 +176,10 @@ namespace modules {
 
   void pulseaudio_module::action_toggle() {
     m_pulseaudio->toggle_mute();
+  }
+
+  void pulseaudio_module::action_popup() {
+    system_popup::toggle(system_popup::make_settings(m_bar, m_conf));
   }
 } // namespace modules
 

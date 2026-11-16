@@ -28,11 +28,13 @@ namespace modules {
     static constexpr auto EVENT_INC = "inc";
     static constexpr auto EVENT_DEC = "dec";
     static constexpr auto EVENT_TOGGLE = "toggle";
+    static constexpr auto EVENT_POPUP = "popup";
 
    protected:
     void action_inc();
     void action_dec();
     void action_toggle();
+    void action_popup();
 
    private:
     static constexpr auto FORMAT_VOLUME = "format-volume";

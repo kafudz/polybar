@@ -1,5 +1,6 @@
 #include "modules/battery.hpp"
 
+#include "components/system_popup.hpp"
 #include "drawtypes/animation.hpp"
 #include "drawtypes/label.hpp"
 #include "drawtypes/progressbar.hpp"
@@ -25,6 +26,8 @@ namespace modules {
    */
   battery_module::battery_module(const bar_settings& bar, string name_, const config& config)
       : inotify_module<battery_module>(bar, move(name_), config) {
+    m_router->register_action(EVENT_POPUP, [this]() { action_popup(); });
+
     // Load configuration values
     m_fullat = std::min(m_conf.get(name(), "full-at", m_fullat), 100);
     m_lowat = std::max(m_conf.get(name(), "low-at", m_lowat), 0);
@@ -272,6 +275,22 @@ namespace modules {
       default:
         return FORMAT_CHARGING;
     }
+  }
+
+  string battery_module::get_output() {
+    string output{module::get_output()};
+
+    m_builder->action(mousebtn::LEFT, *this, EVENT_POPUP, "");
+    m_builder->node(output);
+    m_builder->action_close();
+
+    return m_builder->flush();
+  }
+
+  void battery_module::action_popup() {
+    auto settings = system_popup::make_settings(m_bar, m_conf);
+    settings.battery_name = m_conf.get(name(), "battery", "BAT0"s);
+    system_popup::toggle(settings);
   }
 
   /**

@@ -18,6 +18,10 @@ by [@stringlapse](https://github.com/stringlapse).
 - `internal/date`: Added a `calendar` option that opens a built-in calendar popup when the module is clicked.
   The popup can be navigated with the mouse or the arrow keys and closes on Escape or when clicking outside of it.
   Use `calendar-week-start = sunday` to start the week on Sunday instead of Monday.
+- `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: Added a built-in system popup with a volume
+  slider, a brightness slider, and battery status. Left-clicking any of these modules opens the popup, which can be
+  controlled with the mouse or the scroll wheel and closes on Escape or when clicking outside of it.
+  Left-clicking the volume module now opens this popup; right-click it to toggle mute.
 
 ### Changed
 - `internal/pulseaudio`: Volume adjustments now preserve balance instead of volume ratios ([`#3123`](https://github.com/polybar/polybar/issues/3123), [`#3169`](https://github.com/polybar/polybar/pull/3169)) by [`@parmort`](https://github.com/parmort)
