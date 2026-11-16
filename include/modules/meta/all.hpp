@@ -12,6 +12,7 @@
 #include "modules/date.hpp"
 #include "modules/fs.hpp"
 #include "modules/ipc.hpp"
+#include "modules/launcher.hpp"
 #include "modules/memory.hpp"
 #include "modules/menu.hpp"
 #include "modules/meta/base.hpp"

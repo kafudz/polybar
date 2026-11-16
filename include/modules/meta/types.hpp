@@ -16,6 +16,7 @@ namespace modules {
   static constexpr const char FS_TYPE[] = "internal/fs";
   static constexpr const char GITHUB_TYPE[] = "internal/github";
   static constexpr const char I3_TYPE[] = "internal/i3";
+  static constexpr const char LAUNCHER_TYPE[] = "internal/launcher";
   static constexpr const char MEMORY_TYPE[] = "internal/memory";
   static constexpr const char MPD_TYPE[] = "internal/mpd";
   static constexpr const char NETWORK_TYPE[] = "internal/network";

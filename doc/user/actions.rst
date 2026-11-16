@@ -179,6 +179,22 @@ internal/power
   (or above) the bar. Use this for keyboard shortcuts, for example
   ``polybar-msg action "#power.popup-center"``.
 
+internal/launcher
+^^^^^^^^^^^^^^^^^
+
+:``popup``:
+  Opens the application launcher popup. It lists installed ``.desktop``
+  applications found in the XDG application directories, with a search field
+  above the list. Type to filter, use Up/Down (or the mouse wheel) to move the
+  selection, and press Enter or click an application to launch it. Press Escape
+  or click outside the popup to close it.
+
+  The ``terminal`` setting specifies the terminal command used for desktop
+  entries with ``Terminal=true``, for example ``terminal = xterm -e``. If it is
+  not set, ``$TERMINAL -e`` is used when available, otherwise ``xterm -e``.
+
+  This action is bound to left click by default.
+
 internal/alsa
 ^^^^^^^^^^^^^
 

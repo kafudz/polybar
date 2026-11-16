@@ -64,6 +64,7 @@ set(POLY_SOURCES
   ${src_dir}/components/config.cpp
   ${src_dir}/components/config_parser.cpp
   ${src_dir}/components/controller.cpp
+  ${src_dir}/components/launcher_menu.cpp
   ${src_dir}/components/logger.cpp
   ${src_dir}/components/renderer.cpp
   ${src_dir}/components/screen.cpp
@@ -94,6 +95,7 @@ set(POLY_SOURCES
   ${src_dir}/modules/date.cpp
   ${src_dir}/modules/fs.cpp
   ${src_dir}/modules/ipc.cpp
+  ${src_dir}/modules/launcher.cpp
   ${src_dir}/modules/memory.cpp
   ${src_dir}/modules/menu.cpp
   ${src_dir}/modules/meta/base.cpp

@@ -33,6 +33,10 @@ by [@stringlapse](https://github.com/stringlapse).
   `logout-command`, `reboot-command`, and `shutdown-command`.
   The `popup-center` action opens the popup in the center of the screen instead of next to the bar, which is useful
   for keyboard shortcuts.
+- `internal/launcher`: Added a native application launcher popup with a search field and a list of installed
+  `.desktop` applications. Left-clicking the module opens it; type to filter, use Up/Down to select, Enter to launch,
+  and Escape or clicking outside to close. The `terminal` option sets the terminal command used for desktop entries
+  with `Terminal=true`.
 
 ### Changed
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
