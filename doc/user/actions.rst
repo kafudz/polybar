@@ -155,6 +155,15 @@ internal/date
   setting is enabled. If ``date-alt``/``time-alt`` are also configured,
   right click toggles between the two formats.
 
+  Set ``calendar-weather = true`` to show the current conditions in a footer
+  below the calendar. The weather is requested from `wttr.in
+  <https://wttr.in>`_ in the background, so the popup opens immediately and
+  shows ``Loading weather…`` until the request finishes. Use
+  ``calendar-weather-location`` to select the location (for example
+  ``calendar-weather-location = Padalarang``); leave it empty to let wttr.in
+  detect the location from the request. If the request fails, the footer shows
+  ``Weather unavailable``.
+
 internal/power
 ^^^^^^^^^^^^^^
 

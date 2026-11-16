@@ -20,6 +20,8 @@ namespace modules {
 
     m_calendar = m_conf.get(name(), "calendar", false);
     m_week_starts_on_monday = m_conf.get(name(), "calendar-week-start", "monday"s) != "sunday"s;
+    m_weather = m_conf.get(name(), "calendar-weather", false);
+    m_weather_location = m_conf.get(name(), "calendar-weather-location", ""s);
 
     auto fonts = m_conf.get_list<string>(m_conf.section(), "font", {});
     if (!fonts.empty()) {
@@ -138,6 +140,8 @@ namespace modules {
     settings.bar_height = m_bar.size.h;
     settings.bar_bottom = m_bar.bottom;
     settings.week_starts_on_monday = m_week_starts_on_monday;
+    settings.weather = m_weather;
+    settings.weather_location = m_weather_location;
     settings.dpi = m_bar.dpi_x > 0 ? m_bar.dpi_x : 96.0;
     settings.locale = m_bar.locale;
     settings.font = m_calendar_font;

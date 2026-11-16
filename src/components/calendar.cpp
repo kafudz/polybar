@@ -5,19 +5,28 @@
 #include <cairo/cairo-xcb.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>
 #include <locale>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
 
 #include "components/logger.hpp"
+#include "settings.hpp"
+#include "utils/string.hpp"
+
+#if ENABLE_CURL
+#include "utils/http.hpp"
+#endif
 
 POLYBAR_NS
 
@@ -44,6 +53,24 @@ namespace {
     double b{0.0};
   };
 
+  enum class weather_status { DISABLED, LOADING, READY, ERROR };
+
+  struct weather_info {
+    weather_status status{weather_status::DISABLED};
+    string condition{};
+    string temperature{};
+    string feels_like{};
+    string humidity{};
+    string wind{};
+    string location{};
+  };
+
+  struct weather_shared {
+    std::mutex mutex;
+    weather_info info;
+    std::atomic<bool> updated{false};
+  };
+
   struct calendar_state {
     int x{0};
     int y{0};
@@ -63,6 +90,11 @@ namespace {
     int today_month{0};
     int today_day{0};
     bool week_starts_on_monday{true};
+
+    bool weather_enabled{false};
+    int weather_top{0};
+    int weather_height{0};
+    weather_info weather;
 
     string font{"sans"};
     string locale{};
@@ -139,6 +171,344 @@ namespace {
     cairo_line_to(cr, center_x + direction * size / 2.0, center_y);
     cairo_line_to(cr, center_x - direction * size / 2.0, center_y + size / 2.0);
     cairo_stroke(cr);
+  }
+
+  void draw_text_left(cairo_t* cr, const string& text, double x, double center_y, double size,
+      const rgb& color) {
+    if (text.empty()) {
+      return;
+    }
+
+    cairo_set_font_size(cr, size);
+
+    cairo_text_extents_t extents{};
+    cairo_text_extents(cr, text.c_str(), &extents);
+
+    set_source(cr, color);
+    cairo_move_to(cr, x, center_y - (extents.y_bearing + extents.height / 2.0));
+    cairo_show_text(cr, text.c_str());
+  }
+
+  void draw_text_right(cairo_t* cr, const string& text, double right_x, double center_y, double size,
+      const rgb& color) {
+    if (text.empty()) {
+      return;
+    }
+
+    cairo_set_font_size(cr, size);
+
+    cairo_text_extents_t extents{};
+    cairo_text_extents(cr, text.c_str(), &extents);
+
+    set_source(cr, color);
+    cairo_move_to(cr, right_x - (extents.x_bearing + extents.width),
+        center_y - (extents.y_bearing + extents.height / 2.0));
+    cairo_show_text(cr, text.c_str());
+  }
+
+  double text_width(cairo_t* cr, const string& text, double size) {
+    if (text.empty()) {
+      return 0.0;
+    }
+
+    cairo_set_font_size(cr, size);
+
+    cairo_text_extents_t extents{};
+    cairo_text_extents(cr, text.c_str(), &extents);
+    return extents.width;
+  }
+
+  string fit_text(cairo_t* cr, const string& text, double max_width, double size) {
+    if (text.empty() || max_width <= 0.0) {
+      return "";
+    }
+
+    if (text_width(cr, text, size) <= max_width) {
+      return text;
+    }
+
+    const string ellipsis{"…"};
+
+    for (size_t length = text.size(); length > 0; --length) {
+      string candidate = string_util::utf8_truncate(string{text}, length);
+
+      if (candidate.empty()) {
+        continue;
+      }
+
+      if (text_width(cr, candidate + ellipsis, size) <= max_width) {
+        return candidate + ellipsis;
+      }
+    }
+
+    return ellipsis;
+  }
+
+  void draw_cloud_shape(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    set_source(cr, color);
+
+    for (const auto& blob : {std::array<double, 3>{0.32, 0.60, 0.18}, std::array<double, 3>{0.52, 0.48, 0.22},
+             std::array<double, 3>{0.72, 0.60, 0.16}}) {
+      cairo_new_path(cr);
+      cairo_arc(cr, x + size * blob[0], y + size * blob[1], size * blob[2], 0.0, 2.0 * PI);
+      cairo_fill(cr);
+    }
+
+    rounded_rect(cr, x + size * 0.14, y + size * 0.56, size * 0.74, size * 0.22, size * 0.11);
+    cairo_fill(cr);
+  }
+
+  void draw_sun(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double center_x = x + size * 0.5;
+    const double center_y = y + size * 0.5;
+    const double radius = size * 0.16;
+
+    set_source(cr, color);
+    cairo_new_path(cr);
+    cairo_arc(cr, center_x, center_y, radius, 0.0, 2.0 * PI);
+    cairo_fill(cr);
+
+    cairo_set_line_width(cr, std::max(1.1, size * 0.07));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+    for (int i = 0; i < 8; i++) {
+      const double angle = i * PI / 4.0;
+      cairo_move_to(cr, center_x + std::cos(angle) * radius * 1.5, center_y + std::sin(angle) * radius * 1.5);
+      cairo_line_to(cr, center_x + std::cos(angle) * radius * 2.0, center_y + std::sin(angle) * radius * 2.0);
+    }
+
+    cairo_stroke(cr);
+  }
+
+  void draw_rain(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    draw_cloud_shape(cr, x, y - size * 0.10, size, color);
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.1, size * 0.07));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+    for (int i = 0; i < 3; i++) {
+      const double drop_x = x + size * (0.32 + i * 0.18);
+      cairo_move_to(cr, drop_x, y + size * 0.66);
+      cairo_line_to(cr, drop_x - size * 0.06, y + size * 0.84);
+    }
+
+    cairo_stroke(cr);
+  }
+
+  void draw_snow(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    draw_cloud_shape(cr, x, y - size * 0.10, size, color);
+
+    set_source(cr, color);
+
+    for (int i = 0; i < 3; i++) {
+      cairo_new_path(cr);
+      cairo_arc(cr, x + size * (0.32 + i * 0.18), y + size * 0.76, size * 0.035, 0.0, 2.0 * PI);
+      cairo_fill(cr);
+    }
+  }
+
+  void draw_thunder(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    draw_cloud_shape(cr, x, y - size * 0.10, size, color);
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.1, size * 0.08));
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    cairo_move_to(cr, x + size * 0.56, y + size * 0.62);
+    cairo_line_to(cr, x + size * 0.46, y + size * 0.78);
+    cairo_line_to(cr, x + size * 0.56, y + size * 0.78);
+    cairo_line_to(cr, x + size * 0.48, y + size * 0.94);
+    cairo_stroke(cr);
+  }
+
+  void draw_fog(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    draw_cloud_shape(cr, x, y - size * 0.10, size, color);
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.1, size * 0.07));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+    cairo_move_to(cr, x + size * 0.18, y + size * 0.76);
+    cairo_line_to(cr, x + size * 0.78, y + size * 0.76);
+    cairo_move_to(cr, x + size * 0.28, y + size * 0.90);
+    cairo_line_to(cr, x + size * 0.68, y + size * 0.90);
+    cairo_stroke(cr);
+  }
+
+  void draw_weather_icon(cairo_t* cr, const string& condition, double x, double y, double size,
+      const rgb& color) {
+    const string lower = string_util::lower(condition);
+
+    if (lower.find("thunder") != string::npos || lower.find("storm") != string::npos) {
+      draw_thunder(cr, x, y, size, color);
+    } else if (lower.find("snow") != string::npos || lower.find("sleet") != string::npos ||
+        lower.find("ice") != string::npos) {
+      draw_snow(cr, x, y, size, color);
+    } else if (lower.find("rain") != string::npos || lower.find("drizzle") != string::npos ||
+        lower.find("shower") != string::npos) {
+      draw_rain(cr, x, y, size, color);
+    } else if (lower.find("fog") != string::npos || lower.find("mist") != string::npos ||
+        lower.find("haze") != string::npos) {
+      draw_fog(cr, x, y, size, color);
+    } else if (lower.find("cloud") != string::npos || lower.find("overcast") != string::npos) {
+      draw_cloud_shape(cr, x, y, size, color);
+    } else if (lower.find("sun") != string::npos || lower.find("clear") != string::npos) {
+      draw_sun(cr, x, y, size, color);
+    } else {
+      draw_cloud_shape(cr, x, y, size, color);
+    }
+  }
+
+#if ENABLE_CURL
+  string url_encode(const string& value) {
+    static const char* hex = "0123456789ABCDEF";
+    string encoded;
+    encoded.reserve(value.size());
+
+    for (unsigned char c : value) {
+      if (std::isalnum(c) != 0 || c == '-' || c == '_' || c == '.' || c == '~') {
+        encoded += static_cast<char>(c);
+      } else if (c == ' ') {
+        encoded += "%20";
+      } else {
+        encoded += '%';
+        encoded += hex[c >> 4];
+        encoded += hex[c & 0x0F];
+      }
+    }
+
+    return encoded;
+  }
+
+  string weather_url(const string& location) {
+    string url{"https://wttr.in/"};
+
+    if (!location.empty()) {
+      url += url_encode(location);
+    }
+
+    url += "?format=%C%7C%t%7C%f%7C%h%7C%w%7C%l";
+    return url;
+  }
+
+  bool parse_weather(const string& response, weather_info& info) {
+    string text = response;
+
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+      text.pop_back();
+    }
+
+    const auto fields = string_util::split(text, '|');
+
+    if (fields.size() < 6) {
+      return false;
+    }
+
+    info.condition = fields[0];
+    info.temperature = fields[1];
+    info.feels_like = fields[2];
+    info.humidity = fields[3];
+    info.wind = fields[4];
+    info.location = fields[5];
+
+    for (size_t i = 6; i < fields.size(); i++) {
+      info.location += "|" + fields[i];
+    }
+
+    return !info.temperature.empty();
+  }
+#endif
+
+  void fetch_weather(const std::shared_ptr<weather_shared>& weather, const string& location) {
+    weather_info result;
+
+#if ENABLE_CURL
+    try {
+      http_downloader downloader(4, 8);
+      const string response = downloader.get(weather_url(location));
+
+      if (parse_weather(response, result)) {
+        result.status = weather_status::READY;
+      } else {
+        result.status = weather_status::ERROR;
+      }
+    } catch (const std::exception& err) {
+      logger::make().err("calendar: could not fetch weather (%s)", err.what());
+      result.status = weather_status::ERROR;
+    }
+#else
+    (void)location;
+    result.status = weather_status::ERROR;
+#endif
+
+    {
+      std::lock_guard<std::mutex> lock(weather->mutex);
+      weather->info = move(result);
+    }
+
+    weather->updated = true;
+  }
+
+  void draw_weather(cairo_t* cr, const calendar_state& state) {
+    const double scale = state.scale;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, state.weather_top);
+    cairo_line_to(cr, state.width - state.pad, state.weather_top);
+    cairo_stroke(cr);
+
+    const double line1_y = state.weather_top + 15.0 * scale;
+    const double line2_y = state.weather_top + 33.0 * scale;
+
+    if (state.weather.status == weather_status::LOADING) {
+      draw_text_left(cr, "Loading weather…", state.pad, line1_y, 10.0 * scale, state.muted);
+      return;
+    }
+
+    if (state.weather.status != weather_status::READY) {
+      draw_text_left(cr, "Weather unavailable", state.pad, line1_y, 10.0 * scale, state.muted);
+      return;
+    }
+
+    const double icon_size = 18.0 * scale;
+    const double icon_x = state.pad;
+    const double icon_y = line1_y - icon_size / 2.0;
+    draw_weather_icon(cr, state.weather.condition, icon_x, icon_y, icon_size, state.foreground);
+
+    const double condition_size = 10.0 * scale;
+    const double temperature_size = 11.5 * scale;
+    const double temperature_width = text_width(cr, state.weather.temperature, temperature_size);
+    const double condition_x = icon_x + icon_size + 8.0 * scale;
+    const double condition_right = state.width - state.pad - temperature_width - 8.0 * scale;
+    const string condition = state.weather.condition.empty() ? "Weather" : state.weather.condition;
+
+    draw_text_left(cr, fit_text(cr, condition, condition_right - condition_x, condition_size), condition_x,
+        line1_y, condition_size, state.foreground);
+    draw_text_right(cr, state.weather.temperature, state.width - state.pad, line1_y, temperature_size,
+        state.foreground);
+
+    string detail = state.weather.location;
+    const auto append = [&detail](const string& value, const string& prefix) {
+      if (value.empty()) {
+        return;
+      }
+
+      if (!detail.empty()) {
+        detail += "  ·  ";
+      }
+
+      detail += prefix + value;
+    };
+
+    append(state.weather.feels_like, "feels ");
+    append(state.weather.humidity, "");
+    append(state.weather.wind, "");
+
+    const double detail_size = 8.8 * scale;
+    draw_text_left(cr, fit_text(cr, detail, state.width - 2.0 * state.pad, detail_size), state.pad, line2_y,
+        detail_size, state.muted);
   }
 
   string format_time(const std::tm& time, const char* format, const string& locale) {
@@ -290,6 +660,10 @@ namespace {
           is_today ? state.background : state.foreground);
     }
 
+    if (state.weather_enabled) {
+      draw_weather(cr, state);
+    }
+
     cairo_destroy(cr);
     cairo_surface_flush(surface);
     cairo_surface_destroy(surface);
@@ -399,7 +773,13 @@ namespace {
       state.cell_width = static_cast<int>(std::round(34.0 * scale));
       state.cell_height = static_cast<int>(std::round(28.0 * scale));
       state.width = 7 * state.cell_width + 2 * state.pad;
-      state.height = state.pad + state.header_height + state.weekday_height + 6 * state.cell_height + state.pad;
+
+      const int grid_bottom = state.pad + state.header_height + state.weekday_height + 6 * state.cell_height;
+      state.weather_enabled = settings.weather;
+      state.weather_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
+      state.weather_height = state.weather_enabled ? static_cast<int>(std::round(48.0 * scale)) : 0;
+      state.height = state.weather_enabled ? state.weather_top + state.weather_height : grid_bottom + state.pad;
+
       state.week_starts_on_monday = settings.week_starts_on_monday;
       state.font = settings.font.empty() ? "sans" : settings.font;
       state.locale = settings.locale;
@@ -408,6 +788,26 @@ namespace {
       state.foreground = make_rgb(settings.foreground, {0.85, 0.85, 0.85});
       state.border = mix(state.background, state.foreground, 0.25);
       state.muted = mix(state.background, state.foreground, 0.6);
+
+      std::shared_ptr<weather_shared> weather;
+
+      if (state.weather_enabled) {
+        state.weather.status = weather_status::LOADING;
+        weather = std::make_shared<weather_shared>();
+
+        {
+          std::lock_guard<std::mutex> lock(weather->mutex);
+          weather->info.status = weather_status::LOADING;
+        }
+
+        try {
+          const string location = settings.weather_location;
+          std::thread([weather, location] { fetch_weather(weather, location); }).detach();
+        } catch (const std::exception& err) {
+          state.weather.status = weather_status::ERROR;
+          logger::make().err("calendar: could not start weather thread (%s)", err.what());
+        }
+      }
 
       std::time_t now = std::time(nullptr);
       std::tm today{};
@@ -519,6 +919,15 @@ namespace {
       bool running = true;
 
       while (running && !g_close_requested.load()) {
+        if (weather && weather->updated.exchange(false)) {
+          {
+            std::lock_guard<std::mutex> lock(weather->mutex);
+            state.weather = weather->info;
+          }
+
+          redraw();
+        }
+
         xcb_generic_event_t* event = xcb_poll_for_event(connection);
 
         if (event == nullptr) {

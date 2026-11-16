@@ -50,6 +50,8 @@ namespace modules {
     bool m_calendar{false};
     bool m_week_starts_on_monday{true};
     string m_calendar_font{"sans"};
+    bool m_weather{false};
+    string m_weather_location{};
 
     std::atomic<bool> m_toggled{false};
   };

@@ -23,6 +23,12 @@ struct calendar_settings {
   string font{"sans"};
   rgba background{0xFF000000};
   rgba foreground{0xFFFFFFFF};
+
+  /** Show current weather conditions below the calendar. */
+  bool weather{false};
+
+  /** Location passed to wttr.in, empty to let wttr.in detect it. */
+  string weather_location{};
 };
 
 namespace calendar {

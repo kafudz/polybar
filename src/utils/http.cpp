@@ -10,10 +10,13 @@
 
 POLYBAR_NS
 
-http_downloader::http_downloader(int connection_timeout) {
+http_downloader::http_downloader(int connection_timeout, int total_timeout) {
   m_curl = curl_easy_init();
   curl_easy_setopt(m_curl, CURLOPT_ACCEPT_ENCODING, "deflate");
   curl_easy_setopt(m_curl, CURLOPT_CONNECTTIMEOUT, connection_timeout);
+  if (total_timeout > 0) {
+    curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, static_cast<long>(total_timeout));
+  }
   curl_easy_setopt(m_curl, CURLOPT_FOLLOWLOCATION, true);
   curl_easy_setopt(m_curl, CURLOPT_NOSIGNAL, true);
   curl_easy_setopt(m_curl, CURLOPT_USERAGENT, ("polybar/" + string{APP_VERSION}).c_str());

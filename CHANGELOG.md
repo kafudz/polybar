@@ -19,6 +19,8 @@ by [@stringlapse](https://github.com/stringlapse).
   The popup can be navigated with the mouse or the arrow keys and closes on Escape or when clicking anywhere outside
   its controls.
   Use `calendar-week-start = sunday` to start the week on Sunday instead of Monday.
+  Enable `calendar-weather = true` to show the current weather in a footer below the calendar. The location can be set
+  with `calendar-weather-location`; it is fetched from [wttr.in](https://wttr.in) without blocking the popup.
 - `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: Added a built-in system popup with a volume
   slider, a brightness slider, battery status, and a NetworkManager panel. Left-clicking any of these modules opens
   the popup, which can be controlled with the mouse or the scroll wheel and closes on Escape or when clicking anywhere
@@ -31,6 +33,7 @@ by [@stringlapse](https://github.com/stringlapse).
   `logout-command`, `reboot-command`, and `shutdown-command`.
 
 ### Changed
+- `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
 - `internal/pulseaudio`: Volume adjustments now preserve balance instead of volume ratios ([`#3123`](https://github.com/polybar/polybar/issues/3123), [`#3169`](https://github.com/polybar/polybar/pull/3169)) by [`@parmort`](https://github.com/parmort)
 - When the `-r` flag is provided, and RandR reports zero connected active screens, polybar will not restart. This fixes polybar dying on some laptops when the lid is closed. ([`#3078`](https://github.com/polybar/polybar/pull/3078))).
 
