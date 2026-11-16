@@ -14,6 +14,7 @@ namespace modules {
   class date_module : public timer_module<date_module> {
    public:
     explicit date_module(const bar_settings&, string, const config&);
+    ~date_module() override;
 
     bool update();
     bool build(builder* builder, const string& tag) const;
@@ -21,9 +22,11 @@ namespace modules {
     static constexpr auto TYPE = DATE_TYPE;
 
     static constexpr auto EVENT_TOGGLE = "toggle";
+    static constexpr auto EVENT_CALENDAR = "calendar";
 
    protected:
     void action_toggle();
+    void action_calendar();
 
    private:
     static constexpr auto TAG_LABEL = "<label>";
@@ -43,6 +46,10 @@ namespace modules {
 
     // Single stringstream to be used to gather the results of std::put_time
     std::stringstream datetime_stream;
+
+    bool m_calendar{false};
+    bool m_week_starts_on_monday{true};
+    string m_calendar_font{"sans"};
 
     std::atomic<bool> m_toggled{false};
   };

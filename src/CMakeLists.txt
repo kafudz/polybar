@@ -59,6 +59,7 @@ set(POLY_SOURCES
 
   ${src_dir}/components/bar.cpp
   ${src_dir}/components/builder.cpp
+  ${src_dir}/components/calendar.cpp
   ${src_dir}/components/command_line.cpp
   ${src_dir}/components/config.cpp
   ${src_dir}/components/config_parser.cpp
