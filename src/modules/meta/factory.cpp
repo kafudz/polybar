@@ -101,6 +101,7 @@ namespace modules {
       map_entry<text_module>(),
       map_entry<script_module>(),
       map_entry<menu_module>(),
+      map_entry<power_module>(),
       map_entry<ipc_module>(),
   };
 

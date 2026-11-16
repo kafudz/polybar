@@ -155,6 +155,16 @@ internal/date
   setting is enabled. If ``date-alt``/``time-alt`` are also configured,
   right click toggles between the two formats.
 
+internal/power
+^^^^^^^^^^^^^^
+
+:``popup``:
+  Opens the built-in power menu popup with Lock, Log out, Reboot, and Shut
+  down actions. Clicking an action runs its configured command and closes the
+  popup. Press Escape or click anywhere outside an action to close it without
+  running anything. The popup can also be navigated with the arrow keys and
+  Enter. This action is bound to left click by default.
+
 internal/alsa
 ^^^^^^^^^^^^^
 

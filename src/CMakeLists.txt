@@ -68,6 +68,7 @@ set(POLY_SOURCES
   ${src_dir}/components/renderer.cpp
   ${src_dir}/components/screen.cpp
   ${src_dir}/components/system_popup.cpp
+  ${src_dir}/components/power_menu.cpp
   ${src_dir}/components/eventloop.cpp
 
   ${src_dir}/drawtypes/animation.cpp
@@ -97,6 +98,7 @@ set(POLY_SOURCES
   ${src_dir}/modules/menu.cpp
   ${src_dir}/modules/meta/base.cpp
   ${src_dir}/modules/meta/factory.cpp
+  ${src_dir}/modules/power.cpp
   ${src_dir}/modules/script.cpp
   ${src_dir}/modules/temperature.cpp
   ${src_dir}/modules/text.cpp

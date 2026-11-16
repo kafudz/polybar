@@ -25,6 +25,10 @@ by [@stringlapse](https://github.com/stringlapse).
   outside its controls. The network panel can turn Wi-Fi on or off and connect to visible networks. Secured networks
   without a saved profile prompt for a password inside the popup; press Enter to connect or Escape to cancel.
   Left-clicking the volume module now opens this popup; right-click it to toggle mute.
+- `internal/power`: Added a built-in power menu popup with Lock, Log out, Reboot, and Shut down actions.
+  Left-clicking the module opens the popup, which can be controlled with the mouse or the arrow keys and closes on
+  Escape or when clicking anywhere outside an action. The commands can be changed with `lock-command`,
+  `logout-command`, `reboot-command`, and `shutdown-command`.
 
 ### Changed
 - `internal/pulseaudio`: Volume adjustments now preserve balance instead of volume ratios ([`#3123`](https://github.com/polybar/polybar/issues/3123), [`#3169`](https://github.com/polybar/polybar/pull/3169)) by [`@parmort`](https://github.com/parmort)
