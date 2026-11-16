@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
@@ -471,15 +472,30 @@ namespace {
       xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, stack_above);
       xcb_flush(connection);
 
-      xcb_grab_pointer_reply_t* grab_reply = xcb_grab_pointer_reply(connection,
-          xcb_grab_pointer(connection, 0, window,
-              XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION,
-              XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME),
-          nullptr);
+      xcb_grab_pointer_reply_t* grab_reply = nullptr;
 
-      if (grab_reply != nullptr) {
-        pointer_grabbed = grab_reply->status == XCB_GRAB_STATUS_SUCCESS;
-        std::free(grab_reply);
+      // Clicking the clock starts the popup while the button press still holds
+      // an implicit pointer grab on the bar. Retry briefly so the popup ends up
+      // with the grab and can dismiss itself on any outside click.
+      for (int attempt = 0; attempt < 100; attempt++) {
+        grab_reply = xcb_grab_pointer_reply(connection,
+            xcb_grab_pointer(connection, 0, window,
+                XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION,
+                XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME),
+            nullptr);
+
+        const bool success = grab_reply != nullptr && grab_reply->status == XCB_GRAB_STATUS_SUCCESS;
+
+        if (grab_reply != nullptr) {
+          std::free(grab_reply);
+        }
+
+        if (success) {
+          pointer_grabbed = true;
+          break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
 
       xcb_grab_keyboard_reply_t* keyboard_reply = xcb_grab_keyboard_reply(connection,
@@ -541,16 +557,22 @@ namespace {
               break;
             }
 
+            bool handled = false;
+
             if (button->detail == 4) {
+              handled = true;
               update_month(state, -1);
               redraw();
             } else if (button->detail == 5) {
+              handled = true;
               update_month(state, 1);
               redraw();
             } else if (previous_button(state).contains(pointer_x_pos, pointer_y_pos)) {
+              handled = true;
               update_month(state, -1);
               redraw();
             } else if (next_button(state).contains(pointer_x_pos, pointer_y_pos)) {
+              handled = true;
               update_month(state, 1);
               redraw();
             } else {
@@ -570,6 +592,10 @@ namespace {
                   }
                 }
               }
+            }
+
+            if (!handled) {
+              running = false;
             }
 
             break;

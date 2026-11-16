@@ -149,7 +149,7 @@ internal/date
   Opens the built-in calendar popup. The popup is placed below the bar (or
   above it, if the bar is at the bottom of the screen) and can be navigated
   with the mouse, the arrow keys, and Page Up/Page Down.
-  Press Escape, click outside the popup, or click a day to close it.
+  Press Escape, click anywhere outside a control, or click a day to close it.
 
   This action is automatically bound to left click when the ``calendar``
   setting is enabled. If ``date-alt``/``time-alt`` are also configured,

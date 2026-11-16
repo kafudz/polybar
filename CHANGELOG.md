@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 by [@stringlapse](https://github.com/stringlapse).
 - Added tray-reversed = false option to tray module. Makes tray icons order reversed. ([`#3181`](https://github.com/polybar/polybar/discussions/3181))
 - `internal/date`: Added a `calendar` option that opens a built-in calendar popup when the module is clicked.
-  The popup can be navigated with the mouse or the arrow keys and closes on Escape or when clicking outside of it.
+  The popup can be navigated with the mouse or the arrow keys and closes on Escape or when clicking anywhere outside
+  its controls.
   Use `calendar-week-start = sunday` to start the week on Sunday instead of Monday.
 - `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: Added a built-in system popup with a volume
   slider, a brightness slider, battery status, and a NetworkManager panel. Left-clicking any of these modules opens
