@@ -187,9 +187,9 @@ internal/pulseaudio
 :``popup``:
   Opens the built-in system popup with volume, brightness, and battery
   controls, plus a NetworkManager panel for Wi-Fi. Secured networks without
-  a saved profile prompt for a password inside the popup. This action is bound
-  to left click by default; right click toggles mute unless ``click-right`` is
-  configured.
+  a saved profile prompt for a password inside the popup. Clicking anywhere
+  outside a control closes it. This action is bound to left click by default;
+  right click toggles mute unless ``click-right`` is configured.
 
 internal/xbacklight
 ^^^^^^^^^^^^^^^^^^^
@@ -206,8 +206,8 @@ internal/backlight
 :``popup``:
   Opens the built-in system popup with volume, brightness, and battery
   controls, plus a NetworkManager panel for Wi-Fi. Secured networks without
-  a saved profile prompt for a password inside the popup. This action is bound
-  to left click by default.
+  a saved profile prompt for a password inside the popup. Clicking anywhere
+  outside a control closes it. This action is bound to left click by default.
 
 internal/battery
 ^^^^^^^^^^^^^^^^
@@ -215,8 +215,8 @@ internal/battery
 :``popup``:
   Opens the built-in system popup with volume, brightness, and battery
   controls, plus a NetworkManager panel for Wi-Fi. Secured networks without
-  a saved profile prompt for a password inside the popup. This action is bound
-  to left click by default.
+  a saved profile prompt for a password inside the popup. Clicking anywhere
+  outside a control closes it. This action is bound to left click by default.
 
 internal/xkeyboard
 ^^^^^^^^^^^^^^^^^^

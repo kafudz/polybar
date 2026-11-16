@@ -1698,15 +1698,30 @@ namespace {
       xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, stack_above);
       xcb_flush(connection);
 
-      xcb_grab_pointer_reply_t* grab_reply = xcb_grab_pointer_reply(connection,
-          xcb_grab_pointer(connection, 0, window,
-              XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION,
-              XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME),
-          nullptr);
+      xcb_grab_pointer_reply_t* grab_reply = nullptr;
 
-      if (grab_reply != nullptr) {
-        pointer_grabbed = grab_reply->status == XCB_GRAB_STATUS_SUCCESS;
-        std::free(grab_reply);
+      // Clicking a bar module starts the popup while the button press still
+      // holds an implicit pointer grab on the bar. Retry briefly so the popup
+      // ends up with the grab and can dismiss itself on any outside click.
+      for (int attempt = 0; attempt < 100; attempt++) {
+        grab_reply = xcb_grab_pointer_reply(connection,
+            xcb_grab_pointer(connection, 0, window,
+                XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION,
+                XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME),
+            nullptr);
+
+        const bool success = grab_reply != nullptr && grab_reply->status == XCB_GRAB_STATUS_SUCCESS;
+
+        if (grab_reply != nullptr) {
+          std::free(grab_reply);
+        }
+
+        if (success) {
+          pointer_grabbed = true;
+          break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
 
       xcb_grab_keyboard_reply_t* keyboard_reply = xcb_grab_keyboard_reply(connection,
@@ -1820,8 +1835,11 @@ namespace {
               break;
             }
 
+            bool handled = false;
+
             if (button->detail == 4 || button->detail == 5) {
               const int delta = button->detail == 4 ? 5 : -5;
+              handled = true;
 
               if (pointer_y_pos >= volume_row_y && pointer_y_pos < volume_row_y + state.row_height) {
                 if (state.volume_available) {
@@ -1858,6 +1876,7 @@ namespace {
             if (button->detail == 1 &&
                 pointer_y_pos >= volume_row_y && pointer_y_pos < volume_row_y + state.row_height) {
               if (state.volume_available) {
+                handled = true;
                 if (pointer_x_pos < track_x - 6.0 * state.scale) {
                   toggle_mute(state);
                 } else {
@@ -1870,6 +1889,7 @@ namespace {
             } else if (button->detail == 1 &&
                 pointer_y_pos >= brightness_row_y && pointer_y_pos < brightness_row_y + state.row_height) {
               if (state.brightness_available) {
+                handled = true;
                 state.brightness = percentage_from_pointer(pointer_x_pos, track_x, track_width);
                 state.dragging = drag_target::BRIGHTNESS;
                 apply_brightness(state, true);
@@ -1878,6 +1898,7 @@ namespace {
             } else if (button->detail == 1 && pointer_y_pos >= network_row_y &&
                 pointer_y_pos < network_row_y + state.row_height) {
               if (state.network_available) {
+                handled = true;
                 state.network_expanded = !state.network_expanded;
                 state.network_scroll = 0;
                 cancel_password_prompt(state);
@@ -1902,6 +1923,7 @@ namespace {
               if (state.network_wifi_hw && pointer_x_pos >= switch_x &&
                   pointer_x_pos < switch_x + switch_width && pointer_y_pos >= switch_top &&
                   pointer_y_pos < switch_top + switch_height) {
+                handled = true;
                 cancel_password_prompt(state);
                 toggle_wifi(state);
 
@@ -1915,10 +1937,17 @@ namespace {
                 const int index = state.network_scroll + row;
 
                 if (index >= 0 && index < static_cast<int>(state.networks.size())) {
+                  handled = true;
                   connect_network(state, state.networks[index]);
                   redraw();
                 }
+              } else if (state.network_password_prompt) {
+                handled = true;
               }
+            }
+
+            if (!handled) {
+              running = false;
             }
 
             break;
