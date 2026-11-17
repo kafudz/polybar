@@ -321,16 +321,15 @@ namespace {
 
   void draw_slider(cairo_t* cr, double x, double center_y, double width, double height, int percentage,
       const rgb& track, const rgb& fill, const rgb& knob, bool show_knob) {
-    const double radius = height / 2.0;
     const double clamped = std::clamp(percentage, 0, 100) / 100.0;
 
-    rounded_rect(cr, x, center_y - height / 2.0, width, height, radius);
+    cairo_rectangle(cr, x, center_y - height / 2.0, width, height);
     set_source(cr, track);
     cairo_fill(cr);
 
     const double filled = width * clamped;
     if (filled > 0.0) {
-      rounded_rect(cr, x, center_y - height / 2.0, std::max(filled, height), height, radius);
+      cairo_rectangle(cr, x, center_y - height / 2.0, std::max(filled, height), height);
       set_source(cr, fill);
       cairo_fill(cr);
     }
@@ -437,16 +436,16 @@ namespace {
 
   void draw_switch(cairo_t* cr, double x, double y, double width, double height, bool on, const rgb& track_on,
       const rgb& track_off, const rgb& knob_on, const rgb& knob_off) {
-    const double radius = height / 2.0;
+    const double center_y = y + height / 2.0;
     const double knob_radius = height * 0.36;
 
-    rounded_rect(cr, x, y, width, height, radius);
+    cairo_rectangle(cr, x, y, width, height);
     set_source(cr, on ? track_on : track_off);
     cairo_fill(cr);
 
-    const double knob_x = on ? x + width - radius : x + radius;
+    const double knob_x = on ? x + width - height / 2.0 : x + height / 2.0;
     set_source(cr, on ? knob_on : knob_off);
-    cairo_arc(cr, knob_x, y + radius, knob_radius, 0.0, 2.0 * PI);
+    cairo_arc(cr, knob_x, center_y, knob_radius, 0.0, 2.0 * PI);
     cairo_fill(cr);
   }
 
@@ -1476,7 +1475,7 @@ namespace {
       draw_text_left(cr, "Password for " + truncate_text(state.network_password_ssid, 20), panel_x,
           prompt_label_y, 12.0 * state.scale, state.muted);
 
-      rounded_rect(cr, panel_x, input_top, input_width, input_height, 5.0 * state.scale);
+      cairo_rectangle(cr, panel_x, input_top, input_width, input_height);
       set_source(cr, mix(state.background, state.foreground, 0.06));
       cairo_fill_preserve(cr);
       set_source(cr, state.border);
@@ -1516,8 +1515,8 @@ namespace {
               entry.active || entry.saved ? state.foreground : state.muted;
 
           if (entry.active) {
-            rounded_rect(cr, panel_x - item_pad, item_y + 2.0, panel_right - panel_x + 2.0 * item_pad,
-                layout.list_row_height - 4.0, 4.0 * state.scale);
+            cairo_rectangle(cr, panel_x - item_pad, item_y + 2.0, panel_right - panel_x + 2.0 * item_pad,
+                layout.list_row_height - 4.0);
             set_source(cr, mix(state.background, state.foreground, 0.10));
             cairo_fill(cr);
           }
@@ -1561,7 +1560,7 @@ namespace {
     set_source(cr, state.background);
     cairo_paint(cr);
 
-    rounded_rect(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0, 6.0 * state.scale);
+    cairo_rectangle(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0);
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
     cairo_stroke(cr);

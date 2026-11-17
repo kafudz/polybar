@@ -342,7 +342,7 @@ namespace {
     set_source(cr, state.background);
     cairo_paint(cr);
 
-    rounded_rect(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0, 6.0 * state.scale);
+    cairo_rectangle(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0);
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
     cairo_stroke(cr);
@@ -369,9 +369,8 @@ namespace {
       const double center_y = row_y + state.row_height / 2.0;
 
       if (row == state.active) {
-        rounded_rect(cr, state.pad - 4.0 * state.scale, row_y + 2.0 * state.scale,
-            state.width - 2.0 * state.pad + 8.0 * state.scale, state.row_height - 4.0 * state.scale,
-            5.0 * state.scale);
+        cairo_rectangle(cr, state.pad - 4.0 * state.scale, row_y + 2.0 * state.scale,
+            state.width - 2.0 * state.pad + 8.0 * state.scale, state.row_height - 4.0 * state.scale);
         set_source(cr, state.hover);
         cairo_fill(cr);
       }

@@ -585,7 +585,7 @@ namespace {
     cairo_paint(cr);
 
     // Subtle border around the popup
-    rounded_rect(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0, 6.0 * state.scale);
+    cairo_rectangle(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0);
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
     cairo_stroke(cr);
@@ -649,9 +649,9 @@ namespace {
           day == state.today_day;
 
       if (is_today) {
-        rounded_rect(cr, center_x - (state.cell_width - 6.0 * state.scale) / 2.0,
+        cairo_rectangle(cr, center_x - (state.cell_width - 6.0 * state.scale) / 2.0,
             center_y - (state.cell_height - 4.0 * state.scale) / 2.0, state.cell_width - 6.0 * state.scale,
-            state.cell_height - 4.0 * state.scale, 5.0 * state.scale);
+            state.cell_height - 4.0 * state.scale);
         set_source(cr, state.foreground);
         cairo_fill(cr);
       }

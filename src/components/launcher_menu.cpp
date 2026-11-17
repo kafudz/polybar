@@ -27,7 +27,6 @@
 POLYBAR_NS
 
 namespace {
-  constexpr double PI = 3.14159265358979323846;
   constexpr int MAX_VISIBLE_ROWS = 15;
 
   std::atomic<bool> g_open{false};
@@ -95,17 +94,6 @@ namespace {
 
   void set_source(cairo_t* cr, const rgb& color, double alpha = 1.0) {
     cairo_set_source_rgba(cr, color.r, color.g, color.b, alpha);
-  }
-
-  void rounded_rect(cairo_t* cr, double x, double y, double width, double height, double radius) {
-    radius = std::min(radius, std::min(width, height) / 2.0);
-
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, x + width - radius, y + radius, radius, -PI / 2.0, 0.0);
-    cairo_arc(cr, x + width - radius, y + height - radius, radius, 0.0, PI / 2.0);
-    cairo_arc(cr, x + radius, y + height - radius, radius, PI / 2.0, PI);
-    cairo_arc(cr, x + radius, y + radius, radius, PI, 3.0 * PI / 2.0);
-    cairo_close_path(cr);
   }
 
   void draw_text_left(cairo_t* cr, const string& text, double x, double center_y, double size,
@@ -552,14 +540,13 @@ namespace {
     set_source(cr, state.background);
     cairo_paint(cr);
 
-    rounded_rect(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0, 6.0 * state.scale);
+    cairo_rectangle(cr, 0.5, 0.5, state.width - 1.0, state.height - 1.0);
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
     cairo_stroke(cr);
 
     // Search field
-    rounded_rect(cr, state.pad, state.pad, state.width - 2.0 * state.pad, state.search_height,
-        4.0 * state.scale);
+    cairo_rectangle(cr, state.pad, state.pad, state.width - 2.0 * state.pad, state.search_height);
     set_source(cr, state.input);
     cairo_fill(cr);
 
@@ -604,8 +591,8 @@ namespace {
         const double center_y = row_top + state.row_height / 2.0;
 
         if (index == state.active) {
-          rounded_rect(cr, state.pad, row_top + 2.0 * state.scale, state.width - 2.0 * state.pad,
-              state.row_height - 4.0 * state.scale, 4.0 * state.scale);
+          cairo_rectangle(cr, state.pad, row_top + 2.0 * state.scale, state.width - 2.0 * state.pad,
+              state.row_height - 4.0 * state.scale);
           set_source(cr, state.hover);
           cairo_fill(cr);
         }
