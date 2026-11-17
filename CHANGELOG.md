@@ -53,6 +53,9 @@ by [@stringlapse](https://github.com/stringlapse).
 - All popup menus now keep a static size. `internal/launcher` always reserves space for 15 applications, and the
   system popup's network and Bluetooth lists always use five rows, so the windows no longer resize while filtering
   or when the device list changes.
+- The power menu and system popups now open below the module that was clicked (the power and volume buttons), so
+  they stay under the part of the bar they belong to. `popup-center` still opens the power menu in the middle of the
+  screen.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
   font size of 12 px, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.

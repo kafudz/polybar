@@ -172,7 +172,9 @@ internal/power
   down actions. Clicking an action runs its configured command and closes the
   popup. Press Escape or click anywhere outside an action to close it without
   running anything. The popup can also be navigated with the arrow keys, the
-  mouse wheel, and Enter. This action is bound to left click by default.
+  mouse wheel, and Enter. It opens below the power module (or above it, if the
+  bar is at the bottom of the screen). This action is bound to left click by
+  default.
 
 :``popup-center``:
   Opens the same power menu popup in the center of the screen instead of below
@@ -230,7 +232,9 @@ internal/pulseaudio
   controls, plus NetworkManager and BlueZ panels for Wi-Fi and Bluetooth.
   Secured networks without a saved profile prompt for a password inside the
   popup; paired Bluetooth devices can be connected or disconnected from the
-  device list. Clicking anywhere outside a control closes it. This action is bound to left click by default;
+  device list. The popup opens below the module that was clicked (or above
+  it, if the bar is at the bottom of the screen). Clicking anywhere outside a
+  control closes it. This action is bound to left click by default;
   right click toggles mute unless ``click-right`` is configured.
 
 internal/xbacklight
@@ -250,7 +254,9 @@ internal/backlight
   controls, plus NetworkManager and BlueZ panels for Wi-Fi and Bluetooth.
   Secured networks without a saved profile prompt for a password inside the
   popup; paired Bluetooth devices can be connected or disconnected from the
-  device list. Clicking anywhere outside a control closes it. This action is bound to left click by default.
+  device list. The popup opens below the module that was clicked (or above
+  it, if the bar is at the bottom of the screen). Clicking anywhere outside a
+  control closes it. This action is bound to left click by default.
 
 internal/battery
 ^^^^^^^^^^^^^^^^
@@ -260,7 +266,9 @@ internal/battery
   controls, plus NetworkManager and BlueZ panels for Wi-Fi and Bluetooth.
   Secured networks without a saved profile prompt for a password inside the
   popup; paired Bluetooth devices can be connected or disconnected from the
-  device list. Clicking anywhere outside a control closes it. This action is bound to left click by default.
+  device list. The popup opens below the module that was clicked (or above
+  it, if the bar is at the bottom of the screen). Clicking anywhere outside a
+  control closes it. This action is bound to left click by default.
 
 internal/xkeyboard
 ^^^^^^^^^^^^^^^^^^
