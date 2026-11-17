@@ -70,6 +70,16 @@ namespace {
     }
   };
 
+  struct bluetooth_entry {
+    string mac;
+    string name;
+    bool connected{false};
+
+    bool operator==(const bluetooth_entry& other) const {
+      return mac == other.mac && name == other.name && connected == other.connected;
+    }
+  };
+
   struct controls_state {
     int x{0};
     int y{0};
@@ -129,6 +139,15 @@ namespace {
     string network_password_ssid{};
     string network_password_input{};
 
+    bool bluetooth_available{false};
+    bool bluetooth_expanded{false};
+    bool bluetooth_enabled{false};
+    std::vector<bluetooth_entry> bluetooth_devices;
+    int bluetooth_scroll{0};
+    string bluetooth_message{};
+    std::chrono::steady_clock::time_point bluetooth_message_until{};
+    std::chrono::steady_clock::time_point last_bluetooth_refresh{};
+
     drag_target dragging{drag_target::NONE};
     bool volume_pending{false};
     bool brightness_pending{false};
@@ -178,9 +197,53 @@ namespace {
     return layout.inner_pad + layout.wifi_row_height + list_height + layout.message_height + layout.inner_pad;
   }
 
+  struct bluetooth_layout {
+    double panel_top{0.0};
+    double inner_pad{0.0};
+    double switch_row_y{0.0};
+    double switch_row_height{0.0};
+    double list_top{0.0};
+    double list_row_height{0.0};
+    double hint_height{0.0};
+    double message_height{0.0};
+    int visible_rows{0};
+  };
+
+  double bluetooth_row_top(const controls_state& state) {
+    return state.pad + state.header_height + 4 * state.row_height + network_panel_height(state);
+  }
+
+  bluetooth_layout get_bluetooth_layout(const controls_state& state) {
+    bluetooth_layout layout;
+    layout.panel_top = bluetooth_row_top(state) + state.row_height;
+    layout.inner_pad = 14.0 * state.scale;
+    layout.switch_row_y = layout.panel_top + layout.inner_pad;
+    layout.switch_row_height = 38.0 * state.scale;
+    layout.list_top = layout.switch_row_y + layout.switch_row_height;
+    layout.list_row_height = 34.0 * state.scale;
+    layout.hint_height = 30.0 * state.scale;
+    layout.message_height = 26.0 * state.scale;
+    layout.visible_rows = state.bluetooth_enabled
+        ? std::clamp(static_cast<int>(state.bluetooth_devices.size()), 1, 5)
+        : 0;
+    return layout;
+  }
+
+  double bluetooth_panel_height(const controls_state& state) {
+    if (!state.bluetooth_expanded || !state.bluetooth_available) {
+      return 0.0;
+    }
+
+    const auto layout = get_bluetooth_layout(state);
+    const double list_height =
+        layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
+
+    return layout.inner_pad + layout.switch_row_height + list_height + layout.message_height + layout.inner_pad;
+  }
+
   int popup_height(const controls_state& state) {
-    return static_cast<int>(
-        std::round(state.pad + state.header_height + 4 * state.row_height + network_panel_height(state) + state.pad));
+    return static_cast<int>(std::round(state.pad + state.header_height + 5 * state.row_height +
+        network_panel_height(state) + bluetooth_panel_height(state) + state.pad));
   }
 
   rgb make_rgb(const rgba& color, const rgb& fallback) {
@@ -245,6 +308,50 @@ namespace {
     cairo_text_extents_t extents{};
     cairo_text_extents(cr, text.c_str(), &extents);
     return extents.x_advance;
+  }
+
+  size_t utf8_sequence_length(char c) {
+    const auto byte = static_cast<unsigned char>(c);
+
+    if ((byte & 0x80) == 0) {
+      return 1;
+    }
+    if ((byte & 0xE0) == 0xC0) {
+      return 2;
+    }
+    if ((byte & 0xF0) == 0xE0) {
+      return 3;
+    }
+    if ((byte & 0xF8) == 0xF0) {
+      return 4;
+    }
+    return 1;
+  }
+
+  /**
+   * Shortens text with an ellipsis only when it does not fit into max_width.
+   */
+  string fit_text(cairo_t* cr, const string& text, double size, double max_width) {
+    if (text.empty() || text_width(cr, text, size) <= max_width) {
+      return text;
+    }
+
+    const string ellipsis = "…";
+    string prefix;
+
+    for (size_t i = 0; i < text.size();) {
+      const size_t next = std::min(text.size(), i + utf8_sequence_length(text[i]));
+      const string candidate = text.substr(0, next);
+
+      if (text_width(cr, candidate + ellipsis, size) > max_width) {
+        break;
+      }
+
+      prefix = candidate;
+      i = next;
+    }
+
+    return prefix + ellipsis;
   }
 
   void draw_speaker(cairo_t* cr, double x, double y, double size, const rgb& color, bool muted) {
@@ -383,6 +490,30 @@ namespace {
     cairo_stroke(cr);
   }
 
+  void draw_bluetooth(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double u = size / 20.0;
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, std::max(1.0, 1.6 * u));
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    // Vertical stem.
+    cairo_move_to(cr, x + 10.0 * u, y + 3.0 * u);
+    cairo_line_to(cr, x + 10.0 * u, y + 17.0 * u);
+
+    // Upper and lower halves of the rune.
+    cairo_move_to(cr, x + 10.0 * u, y + 3.0 * u);
+    cairo_line_to(cr, x + 15.0 * u, y + 7.0 * u);
+    cairo_line_to(cr, x + 5.0 * u, y + 13.0 * u);
+
+    cairo_move_to(cr, x + 10.0 * u, y + 17.0 * u);
+    cairo_line_to(cr, x + 15.0 * u, y + 13.0 * u);
+    cairo_line_to(cr, x + 5.0 * u, y + 7.0 * u);
+
+    cairo_stroke(cr);
+  }
+
   void draw_lock(cairo_t* cr, double x, double y, double size, const rgb& color) {
     const double u = size / 20.0;
 
@@ -436,16 +567,16 @@ namespace {
 
   void draw_switch(cairo_t* cr, double x, double y, double width, double height, bool on, const rgb& track_on,
       const rgb& track_off, const rgb& knob_on, const rgb& knob_off) {
-    const double center_y = y + height / 2.0;
+    const double radius = height / 2.0;
     const double knob_radius = height * 0.36;
 
-    cairo_rectangle(cr, x, y, width, height);
+    rounded_rect(cr, x, y, width, height, radius);
     set_source(cr, on ? track_on : track_off);
     cairo_fill(cr);
 
-    const double knob_x = on ? x + width - height / 2.0 : x + height / 2.0;
+    const double knob_x = on ? x + width - radius : x + radius;
     set_source(cr, on ? knob_on : knob_off);
-    cairo_arc(cr, knob_x, center_y, knob_radius, 0.0, 2.0 * PI);
+    cairo_arc(cr, knob_x, y + radius, knob_radius, 0.0, 2.0 * PI);
     cairo_fill(cr);
   }
 
@@ -1116,6 +1247,135 @@ namespace {
     return changed;
   }
 
+  void set_bluetooth_message(controls_state& state, string message, int seconds = 3) {
+    state.bluetooth_message = std::move(message);
+    state.bluetooth_message_until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+  }
+
+  bool read_bluetooth(controls_state& state) {
+    bool changed = false;
+
+    auto show = run_command_with_status("bluetoothctl show 2>/dev/null");
+    const bool available = show.first == 0 && show.second.find("Controller ") != string::npos;
+
+    if (!available) {
+      if (state.bluetooth_available) {
+        state.bluetooth_available = false;
+        changed = true;
+      }
+      if (state.bluetooth_enabled) {
+        state.bluetooth_enabled = false;
+        changed = true;
+      }
+      if (!state.bluetooth_devices.empty()) {
+        state.bluetooth_devices.clear();
+        changed = true;
+      }
+      return changed;
+    }
+
+    bool enabled = state.bluetooth_enabled;
+
+    for (const auto& line : split_lines(show.second)) {
+      const auto separator = line.find(':');
+
+      if (separator == string::npos) {
+        continue;
+      }
+
+      const auto key = string_util::trim(line.substr(0, separator),
+          [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; });
+      const auto value = string_util::trim(line.substr(separator + 1),
+          [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; });
+
+      if (key == "Powered") {
+        enabled = value == "yes";
+      }
+    }
+
+    if (!state.bluetooth_available) {
+      state.bluetooth_available = true;
+      changed = true;
+    }
+    if (state.bluetooth_enabled != enabled) {
+      state.bluetooth_enabled = enabled;
+      changed = true;
+    }
+
+    std::vector<bluetooth_entry> devices;
+
+    if (enabled) {
+      auto add_devices = [&](const string& output, bool connected) {
+        for (const auto& line : split_lines(output)) {
+          if (line.compare(0, 7, "Device ") != 0) {
+            continue;
+          }
+
+          const auto rest = line.substr(7);
+          const auto separator = rest.find(' ');
+
+          if (separator == string::npos) {
+            continue;
+          }
+
+          const auto mac = rest.substr(0, separator);
+          auto name = string_util::trim(rest.substr(separator + 1));
+
+          if (name.empty()) {
+            name = mac;
+          }
+
+          auto existing = std::find_if(devices.begin(), devices.end(),
+              [&](const bluetooth_entry& entry) { return entry.mac == mac; });
+
+          if (existing == devices.end()) {
+            bluetooth_entry entry;
+            entry.mac = mac;
+            entry.name = name;
+            entry.connected = connected;
+            devices.push_back(std::move(entry));
+          } else {
+            existing->connected = existing->connected || connected;
+          }
+        }
+      };
+
+      auto paired = run_command_with_status("bluetoothctl devices Paired 2>/dev/null");
+
+      if (paired.first == 0) {
+        add_devices(paired.second, false);
+      }
+
+      auto connected = run_command_with_status("bluetoothctl devices Connected 2>/dev/null");
+
+      if (connected.first == 0) {
+        add_devices(connected.second, true);
+      }
+
+      std::sort(devices.begin(), devices.end(), [](const bluetooth_entry& a, const bluetooth_entry& b) {
+        if (a.connected != b.connected) {
+          return a.connected;
+        }
+        return a.name < b.name;
+      });
+    }
+
+    if (state.bluetooth_devices != devices) {
+      state.bluetooth_devices = std::move(devices);
+      changed = true;
+    }
+
+    const auto layout = get_bluetooth_layout(state);
+    const int max_scroll = std::max(0, static_cast<int>(state.bluetooth_devices.size()) - layout.visible_rows);
+
+    if (state.bluetooth_scroll > max_scroll) {
+      state.bluetooth_scroll = max_scroll;
+      changed = true;
+    }
+
+    return changed;
+  }
+
   void set_network_message(controls_state& state, string message, int seconds = 3) {
     state.network_message = std::move(message);
     state.network_message_until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
@@ -1179,6 +1439,34 @@ namespace {
     set_network_message(state, "Connecting to " + truncate_text(entry.ssid, 18) + "…", 10);
     run_async("nmcli device wifi connect " + shell_quote(entry.ssid) + " >/dev/null 2>&1");
     state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+  }
+
+  void toggle_bluetooth(controls_state& state) {
+    if (!state.bluetooth_available) {
+      return;
+    }
+
+    if (state.bluetooth_enabled) {
+      set_bluetooth_message(state, "Disabling Bluetooth…");
+      run_async("bluetoothctl power off >/dev/null 2>&1");
+    } else {
+      set_bluetooth_message(state, "Enabling Bluetooth…", 6);
+      run_async("rfkill unblock bluetooth >/dev/null 2>&1; bluetoothctl power on >/dev/null 2>&1");
+    }
+
+    state.last_bluetooth_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+  }
+
+  void toggle_bluetooth_device(controls_state& state, const bluetooth_entry& entry) {
+    if (entry.connected) {
+      set_bluetooth_message(state, "Disconnecting from " + truncate_text(entry.name, 18) + "…", 8);
+      run_async("bluetoothctl disconnect " + shell_quote(entry.mac) + " >/dev/null 2>&1");
+    } else {
+      set_bluetooth_message(state, "Connecting to " + truncate_text(entry.name, 18) + "…", 10);
+      run_async("bluetoothctl connect " + shell_quote(entry.mac) + " >/dev/null 2>&1");
+    }
+
+    state.last_bluetooth_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
   }
 
 #if ENABLE_PULSEAUDIO
@@ -1283,12 +1571,215 @@ namespace {
       changed = read_network(state) || changed;
     }
 
+    if (now - state.last_bluetooth_refresh >= std::chrono::seconds(2)) {
+      state.last_bluetooth_refresh = now;
+      changed = read_bluetooth(state) || changed;
+    }
+
     if (!state.network_message.empty() && now >= state.network_message_until) {
       state.network_message.clear();
       changed = true;
     }
 
+    if (!state.bluetooth_message.empty() && now >= state.bluetooth_message_until) {
+      state.bluetooth_message.clear();
+      changed = true;
+    }
+
     return changed;
+  }
+
+  void draw_network_panel(cairo_t* cr, const controls_state& state) {
+    const double label_size = 12.0 * state.scale;
+    const auto layout = get_network_layout(state);
+    const double panel_x = state.pad;
+    const double panel_right = state.width - state.pad;
+    const double switch_width = 38.0 * state.scale;
+    const double switch_height = 20.0 * state.scale;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, panel_x, layout.panel_top);
+    cairo_line_to(cr, panel_right, layout.panel_top);
+    cairo_stroke(cr);
+
+    const double wifi_center_y = layout.wifi_row_y + layout.wifi_row_height / 2.0;
+    draw_wifi(cr, panel_x, wifi_center_y - 9.0 * state.scale, 18.0 * state.scale,
+        state.network_wifi_enabled ? 70 : 0,
+        state.network_wifi_hw && state.network_wifi_enabled ? state.foreground : state.muted);
+    draw_text_left(cr, "Wi-Fi", panel_x + 30.0 * state.scale, wifi_center_y, label_size,
+        state.network_wifi_hw ? state.foreground : state.muted);
+
+    if (!state.network_wifi_hw) {
+      draw_text_right(cr, "No hardware", panel_right, wifi_center_y, 12.0 * state.scale, state.muted);
+    } else {
+      const double switch_x = panel_right - switch_width;
+      draw_switch(cr, switch_x, wifi_center_y - switch_height / 2.0, switch_width, switch_height,
+          state.network_wifi_enabled, state.foreground, state.border, state.background, state.muted);
+    }
+
+    const double list_height =
+        layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
+
+    if (state.network_password_prompt) {
+      const double prompt_label_y = layout.list_top + 10.0 * state.scale;
+      const double input_height = 36.0 * state.scale;
+      const double input_top = prompt_label_y + 12.0 * state.scale;
+      const double input_width = panel_right - panel_x;
+      const double input_text_x = panel_x + 14.0 * state.scale;
+      const double input_center_y = input_top + input_height / 2.0;
+
+      draw_text_left(cr, "Password for " + truncate_text(state.network_password_ssid, 20), panel_x,
+          prompt_label_y, 12.0 * state.scale, state.muted);
+
+      cairo_rectangle(cr, panel_x, input_top, input_width, input_height);
+      set_source(cr, mix(state.background, state.foreground, 0.06));
+      cairo_fill_preserve(cr);
+      set_source(cr, state.border);
+      cairo_set_line_width(cr, 1.0);
+      cairo_stroke(cr);
+
+      const string masked(std::min<size_t>(state.network_password_input.size(), 30), '*');
+      draw_text_left(cr, masked, input_text_x, input_center_y, 12.0 * state.scale, state.foreground);
+
+      const double caret_x = input_text_x + text_width(cr, masked, 12.0 * state.scale) + 1.0;
+      cairo_new_path(cr);
+      set_source(cr, state.foreground);
+      cairo_set_line_width(cr, 1.5);
+      cairo_move_to(cr, caret_x, input_top + 10.0 * state.scale);
+      cairo_line_to(cr, caret_x, input_top + input_height - 10.0 * state.scale);
+      cairo_stroke(cr);
+
+      draw_text_left(cr, "Enter to connect · Esc to cancel", panel_x,
+          input_top + input_height + 16.0 * state.scale, 12.0 * state.scale, state.muted);
+    } else if (layout.visible_rows > 0) {
+      if (state.networks.empty()) {
+        draw_text_left(cr, "No networks found", panel_x, layout.list_top + layout.list_row_height / 2.0,
+            12.0 * state.scale, state.muted);
+      } else {
+        for (int i = 0; i < layout.visible_rows; i++) {
+          const int index = state.network_scroll + i;
+
+          if (index >= static_cast<int>(state.networks.size())) {
+            break;
+          }
+
+          const auto& entry = state.networks[index];
+          const double item_y = layout.list_top + i * layout.list_row_height;
+          const double center_y = item_y + layout.list_row_height / 2.0;
+          const double item_pad = 6.0 * state.scale;
+          const rgb text_color =
+              entry.active || entry.saved ? state.foreground : state.muted;
+
+          if (entry.active) {
+            cairo_rectangle(cr, panel_x - item_pad, item_y + 2.0, panel_right - panel_x + 2.0 * item_pad,
+                layout.list_row_height - 4.0);
+            set_source(cr, mix(state.background, state.foreground, 0.10));
+            cairo_fill(cr);
+          }
+
+          draw_wifi(cr, panel_x, center_y - 8.0 * state.scale, 16.0 * state.scale, entry.signal, text_color);
+          draw_text_left(cr, truncate_text(entry.ssid, 22), panel_x + 28.0 * state.scale, center_y,
+              12.0 * state.scale, text_color);
+
+          double right = panel_right;
+          if (entry.active) {
+            draw_check(cr, right - 12.0 * state.scale, center_y - 6.0 * state.scale, 12.0 * state.scale,
+                state.foreground);
+            right -= 17.0 * state.scale;
+          }
+          if (entry.secure) {
+            draw_lock(cr, right - 11.0 * state.scale, center_y - 7.0 * state.scale, 11.0 * state.scale,
+                state.muted);
+          }
+        }
+      }
+    } else {
+      const string hint = !state.network_wifi_hw ? "No Wi-Fi hardware" : "Wi-Fi is off";
+      draw_text_left(cr, hint, panel_x, layout.list_top + layout.hint_height / 2.0, 12.0 * state.scale,
+          state.muted);
+    }
+
+    if (!state.network_message.empty()) {
+      const double message_y = layout.list_top + list_height + layout.message_height / 2.0;
+      draw_text_left(cr, state.network_message, panel_x, message_y, 12.0 * state.scale, state.foreground);
+    }
+  }
+
+  void draw_bluetooth_panel(cairo_t* cr, const controls_state& state) {
+    const double label_size = 12.0 * state.scale;
+    const auto layout = get_bluetooth_layout(state);
+    const double panel_x = state.pad;
+    const double panel_right = state.width - state.pad;
+    const double switch_width = 38.0 * state.scale;
+    const double switch_height = 20.0 * state.scale;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, panel_x, layout.panel_top);
+    cairo_line_to(cr, panel_right, layout.panel_top);
+    cairo_stroke(cr);
+
+    const double switch_center_y = layout.switch_row_y + layout.switch_row_height / 2.0;
+    const rgb icon_color = state.bluetooth_enabled ? state.foreground : state.muted;
+
+    draw_bluetooth(cr, panel_x, switch_center_y - 9.0 * state.scale, 18.0 * state.scale, icon_color);
+    draw_text_left(cr, "Bluetooth", panel_x + 30.0 * state.scale, switch_center_y, label_size,
+        state.bluetooth_available ? state.foreground : state.muted);
+
+    const double switch_x = panel_right - switch_width;
+    draw_switch(cr, switch_x, switch_center_y - switch_height / 2.0, switch_width, switch_height,
+        state.bluetooth_enabled, state.foreground, state.border, state.background, state.muted);
+
+    const double list_height =
+        layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
+
+    if (layout.visible_rows > 0) {
+      if (state.bluetooth_devices.empty()) {
+        draw_text_left(cr, "No paired devices", panel_x, layout.list_top + layout.list_row_height / 2.0,
+            12.0 * state.scale, state.muted);
+      } else {
+        for (int i = 0; i < layout.visible_rows; i++) {
+          const int index = state.bluetooth_scroll + i;
+
+          if (index >= static_cast<int>(state.bluetooth_devices.size())) {
+            break;
+          }
+
+          const auto& entry = state.bluetooth_devices[index];
+          const double item_y = layout.list_top + i * layout.list_row_height;
+          const double center_y = item_y + layout.list_row_height / 2.0;
+          const double item_pad = 6.0 * state.scale;
+          const rgb text_color = entry.connected ? state.foreground : state.muted;
+
+          if (entry.connected) {
+            cairo_rectangle(cr, panel_x - item_pad, item_y + 2.0, panel_right - panel_x + 2.0 * item_pad,
+                layout.list_row_height - 4.0);
+            set_source(cr, mix(state.background, state.foreground, 0.10));
+            cairo_fill(cr);
+          }
+
+          draw_bluetooth(cr, panel_x, center_y - 8.0 * state.scale, 16.0 * state.scale, text_color);
+
+          const double name_max = panel_right - 20.0 * state.scale - (panel_x + 28.0 * state.scale);
+          draw_text_left(cr, fit_text(cr, entry.name, 12.0 * state.scale, name_max),
+              panel_x + 28.0 * state.scale, center_y, 12.0 * state.scale, text_color);
+
+          if (entry.connected) {
+            draw_check(cr, panel_right - 12.0 * state.scale, center_y - 6.0 * state.scale, 12.0 * state.scale,
+                state.foreground);
+          }
+        }
+      }
+    } else {
+      draw_text_left(cr, "Bluetooth is off", panel_x, layout.list_top + layout.hint_height / 2.0,
+          12.0 * state.scale, state.muted);
+    }
+
+    if (!state.bluetooth_message.empty()) {
+      const double message_y = layout.list_top + list_height + layout.message_height / 2.0;
+      draw_text_left(cr, state.bluetooth_message, panel_x, message_y, 12.0 * state.scale, state.foreground);
+    }
   }
 
   void draw_controls(cairo_t* cr, const controls_state& state) {
@@ -1406,7 +1897,7 @@ namespace {
 
         if (state.network_connected) {
           if (!state.network_name.empty()) {
-            detail = truncate_text(state.network_name, 12);
+            detail = state.network_name;
           }
           if (!state.network_ip.empty()) {
             if (!detail.empty()) {
@@ -1417,12 +1908,14 @@ namespace {
           if (detail.empty()) {
             detail = state.network_device;
           }
+
+          detail = fit_text(cr, detail, 12.0 * state.scale, state.width - state.pad - label_x);
         }
       }
 
       draw_text_right(cr, value, state.width - state.pad - chevron_space, label_y, value_size,
           state.network_available ? state.foreground : state.muted);
-      draw_text_right(cr, detail, state.width - state.pad - chevron_space, detail_y, 12.0 * state.scale, state.muted);
+      draw_text_right(cr, detail, state.width - state.pad, detail_y, 12.0 * state.scale, state.muted);
 
       if (state.network_available) {
         draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 12.0 * state.scale, chevron_size,
@@ -1430,122 +1923,53 @@ namespace {
       }
     }
 
-    if (!state.network_expanded || !state.network_available) {
-      return;
-    }
+    // Bluetooth row.
+    {
+      const double row_y = bluetooth_row_top(state);
+      const double label_y = row_y + 18.0 * state.scale;
+      const double detail_y = row_y + 42.0 * state.scale;
+      const double chevron_size = 14.0 * state.scale;
+      const double chevron_space = state.bluetooth_available ? 18.0 * state.scale : 0.0;
+      const rgb icon_color = state.bluetooth_available && state.bluetooth_enabled ? state.foreground : state.muted;
 
-    const auto layout = get_network_layout(state);
-    const double panel_x = state.pad;
-    const double panel_right = state.width - state.pad;
-    const double switch_width = 38.0 * state.scale;
-    const double switch_height = 20.0 * state.scale;
+      draw_bluetooth(cr, state.pad, row_y + 10.0 * state.scale, icon_size, icon_color);
+      draw_text_left(cr, "Bluetooth", label_x, label_y, label_size,
+          state.bluetooth_available ? state.foreground : state.muted);
 
-    set_source(cr, state.border);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, panel_x, layout.panel_top);
-    cairo_line_to(cr, panel_right, layout.panel_top);
-    cairo_stroke(cr);
+      string value = "Unavailable";
+      string detail;
 
-    const double wifi_center_y = layout.wifi_row_y + layout.wifi_row_height / 2.0;
-    draw_wifi(cr, panel_x, wifi_center_y - 9.0 * state.scale, 18.0 * state.scale,
-        state.network_wifi_enabled ? 70 : 0,
-        state.network_wifi_hw && state.network_wifi_enabled ? state.foreground : state.muted);
-    draw_text_left(cr, "Wi-Fi", panel_x + 30.0 * state.scale, wifi_center_y, label_size,
-        state.network_wifi_hw ? state.foreground : state.muted);
+      if (state.bluetooth_available) {
+        value = state.bluetooth_enabled ? "On" : "Off";
 
-    if (!state.network_wifi_hw) {
-      draw_text_right(cr, "No hardware", panel_right, wifi_center_y, 12.0 * state.scale, state.muted);
-    } else {
-      const double switch_x = panel_right - switch_width;
-      draw_switch(cr, switch_x, wifi_center_y - switch_height / 2.0, switch_width, switch_height,
-          state.network_wifi_enabled, state.foreground, state.border, state.background, state.muted);
-    }
+        if (state.bluetooth_enabled) {
+          const auto connected = std::find_if(state.bluetooth_devices.begin(), state.bluetooth_devices.end(),
+              [](const bluetooth_entry& entry) { return entry.connected; });
 
-    const double list_height =
-        layout.visible_rows > 0 ? layout.visible_rows * layout.list_row_height : layout.hint_height;
-
-    if (state.network_password_prompt) {
-      const double prompt_label_y = layout.list_top + 10.0 * state.scale;
-      const double input_height = 36.0 * state.scale;
-      const double input_top = prompt_label_y + 12.0 * state.scale;
-      const double input_width = panel_right - panel_x;
-      const double input_text_x = panel_x + 14.0 * state.scale;
-      const double input_center_y = input_top + input_height / 2.0;
-
-      draw_text_left(cr, "Password for " + truncate_text(state.network_password_ssid, 20), panel_x,
-          prompt_label_y, 12.0 * state.scale, state.muted);
-
-      cairo_rectangle(cr, panel_x, input_top, input_width, input_height);
-      set_source(cr, mix(state.background, state.foreground, 0.06));
-      cairo_fill_preserve(cr);
-      set_source(cr, state.border);
-      cairo_set_line_width(cr, 1.0);
-      cairo_stroke(cr);
-
-      const string masked(std::min<size_t>(state.network_password_input.size(), 30), '*');
-      draw_text_left(cr, masked, input_text_x, input_center_y, 12.0 * state.scale, state.foreground);
-
-      const double caret_x = input_text_x + text_width(cr, masked, 12.0 * state.scale) + 1.0;
-      cairo_new_path(cr);
-      set_source(cr, state.foreground);
-      cairo_set_line_width(cr, 1.5);
-      cairo_move_to(cr, caret_x, input_top + 10.0 * state.scale);
-      cairo_line_to(cr, caret_x, input_top + input_height - 10.0 * state.scale);
-      cairo_stroke(cr);
-
-      draw_text_left(cr, "Enter to connect · Esc to cancel", panel_x,
-          input_top + input_height + 16.0 * state.scale, 12.0 * state.scale, state.muted);
-    } else if (layout.visible_rows > 0) {
-      if (state.networks.empty()) {
-        draw_text_left(cr, "No networks found", panel_x, layout.list_top + layout.list_row_height / 2.0,
-            12.0 * state.scale, state.muted);
-      } else {
-        for (int i = 0; i < layout.visible_rows; i++) {
-          const int index = state.network_scroll + i;
-
-          if (index >= static_cast<int>(state.networks.size())) {
-            break;
-          }
-
-          const auto& entry = state.networks[index];
-          const double item_y = layout.list_top + i * layout.list_row_height;
-          const double center_y = item_y + layout.list_row_height / 2.0;
-          const double item_pad = 6.0 * state.scale;
-          const rgb text_color =
-              entry.active || entry.saved ? state.foreground : state.muted;
-
-          if (entry.active) {
-            cairo_rectangle(cr, panel_x - item_pad, item_y + 2.0, panel_right - panel_x + 2.0 * item_pad,
-                layout.list_row_height - 4.0);
-            set_source(cr, mix(state.background, state.foreground, 0.10));
-            cairo_fill(cr);
-          }
-
-          draw_wifi(cr, panel_x, center_y - 8.0 * state.scale, 16.0 * state.scale, entry.signal, text_color);
-          draw_text_left(cr, truncate_text(entry.ssid, 22), panel_x + 28.0 * state.scale, center_y,
-              12.0 * state.scale, text_color);
-
-          double right = panel_right;
-          if (entry.active) {
-            draw_check(cr, right - 12.0 * state.scale, center_y - 6.0 * state.scale, 12.0 * state.scale,
-                state.foreground);
-            right -= 17.0 * state.scale;
-          }
-          if (entry.secure) {
-            draw_lock(cr, right - 11.0 * state.scale, center_y - 7.0 * state.scale, 11.0 * state.scale,
-                state.muted);
+          if (connected != state.bluetooth_devices.end()) {
+            detail = fit_text(cr, connected->name, 12.0 * state.scale, state.width - state.pad - label_x);
+          } else if (!state.bluetooth_devices.empty()) {
+            detail = std::to_string(state.bluetooth_devices.size()) + " paired";
           }
         }
       }
-    } else {
-      const string hint = !state.network_wifi_hw ? "No Wi-Fi hardware" : "Wi-Fi is off";
-      draw_text_left(cr, hint, panel_x, layout.list_top + layout.hint_height / 2.0, 12.0 * state.scale,
-          state.muted);
+
+      draw_text_right(cr, value, state.width - state.pad - chevron_space, label_y, value_size,
+          state.bluetooth_available ? state.foreground : state.muted);
+      draw_text_right(cr, detail, state.width - state.pad, detail_y, 12.0 * state.scale, state.muted);
+
+      if (state.bluetooth_available) {
+        draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 12.0 * state.scale, chevron_size,
+            state.muted, state.bluetooth_expanded);
+      }
     }
 
-    if (!state.network_message.empty()) {
-      const double message_y = layout.list_top + list_height + layout.message_height / 2.0;
-      draw_text_left(cr, state.network_message, panel_x, message_y, 12.0 * state.scale, state.foreground);
+    if (state.network_expanded && state.network_available) {
+      draw_network_panel(cr, state);
+    }
+
+    if (state.bluetooth_expanded && state.bluetooth_available) {
+      draw_bluetooth_panel(cr, state);
     }
   }
 
@@ -1646,6 +2070,8 @@ namespace {
       read_battery(state);
       read_network(state);
       state.last_network_refresh = std::chrono::steady_clock::now();
+      read_bluetooth(state);
+      state.last_bluetooth_refresh = std::chrono::steady_clock::now();
 
       const int margin = static_cast<int>(std::round(4.0 * scale));
       int pointer_x = settings.bar_x + settings.bar_width / 2;
@@ -1868,6 +2294,20 @@ namespace {
                     redraw();
                   }
                 }
+              } else if (state.bluetooth_expanded && state.bluetooth_available) {
+                const auto layout = get_bluetooth_layout(state);
+
+                if (layout.visible_rows > 0) {
+                  const double list_bottom = layout.list_top + layout.visible_rows * layout.list_row_height;
+
+                  if (pointer_y_pos >= layout.list_top && pointer_y_pos < list_bottom) {
+                    const int max_scroll = std::max(
+                        0, static_cast<int>(state.bluetooth_devices.size()) - layout.visible_rows);
+                    state.bluetooth_scroll =
+                        std::clamp(state.bluetooth_scroll + (button->detail == 4 ? -1 : 1), 0, max_scroll);
+                    redraw();
+                  }
+                }
               }
 
               break;
@@ -1909,6 +2349,49 @@ namespace {
                 }
 
                 if (!sync_size()) {
+                  redraw();
+                }
+              }
+            } else if (button->detail == 1 && pointer_y_pos >= bluetooth_row_top(state) &&
+                pointer_y_pos < bluetooth_row_top(state) + state.row_height) {
+              if (state.bluetooth_available) {
+                handled = true;
+                state.bluetooth_expanded = !state.bluetooth_expanded;
+                state.bluetooth_scroll = 0;
+
+                if (state.bluetooth_expanded) {
+                  read_bluetooth(state);
+                  state.last_bluetooth_refresh = std::chrono::steady_clock::now();
+                }
+
+                if (!sync_size()) {
+                  redraw();
+                }
+              }
+            } else if (button->detail == 1 && state.bluetooth_expanded && state.bluetooth_available) {
+              const auto layout = get_bluetooth_layout(state);
+              const double switch_center_y = layout.switch_row_y + layout.switch_row_height / 2.0;
+              const double switch_width = 38.0 * state.scale;
+              const double switch_height = 20.0 * state.scale;
+              const double switch_x = state.width - state.pad - switch_width;
+              const double switch_top = switch_center_y - switch_height / 2.0;
+
+              if (pointer_x_pos >= switch_x && pointer_x_pos < switch_x + switch_width &&
+                  pointer_y_pos >= switch_top && pointer_y_pos < switch_top + switch_height) {
+                handled = true;
+                toggle_bluetooth(state);
+
+                if (!sync_size()) {
+                  redraw();
+                }
+              } else if (layout.visible_rows > 0 && pointer_y_pos >= layout.list_top &&
+                  pointer_y_pos < layout.list_top + layout.visible_rows * layout.list_row_height) {
+                const int row = static_cast<int>((pointer_y_pos - layout.list_top) / layout.list_row_height);
+                const int index = state.bluetooth_scroll + row;
+
+                if (index >= 0 && index < static_cast<int>(state.bluetooth_devices.size())) {
+                  handled = true;
+                  toggle_bluetooth_device(state, state.bluetooth_devices[index]);
                   redraw();
                 }
               }

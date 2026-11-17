@@ -38,10 +38,16 @@ by [@stringlapse](https://github.com/stringlapse).
   and Escape or clicking outside to close. The `terminal` option sets the terminal command used for desktop entries
   with `Terminal=true`.
 - `internal/power`: Added mouse wheel navigation to the power menu popup, in addition to the arrow keys.
+- `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: The system popup now has a Bluetooth row. Expanding
+  it shows a power switch and a list of paired devices; clicking a device connects or disconnects it, and the list can
+  be scrolled with the mouse wheel.
 
 ### Changed
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use square
-  corners instead of rounded ones, giving all popups a flat, consistent window style.
+  corners instead of rounded ones, giving all popups a flat, consistent window style. The Wi-Fi and Bluetooth
+  switches inside the system popup keep their rounded, pill-shaped track.
+- The system popup now shows the full network connection name and address instead of truncating the name, so
+  connections such as `Wired connection 1` are no longer cut off.
 - `internal/launcher` and the system popup now use more generous vertical and horizontal padding, so rows, labels,
   and the search field no longer feel cramped at the larger font size.
 - `internal/launcher`: The popup now shows up to 15 applications at once and dynamically resizes to the number of
