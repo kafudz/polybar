@@ -37,6 +37,7 @@ by [@stringlapse](https://github.com/stringlapse).
   `.desktop` applications. Left-clicking the module opens it; type to filter, use Up/Down to select, Enter to launch,
   and Escape or clicking outside to close. The `terminal` option sets the terminal command used for desktop entries
   with `Terminal=true`.
+- `internal/power`: Added mouse wheel navigation to the power menu popup, in addition to the arrow keys.
 
 ### Changed
 - `internal/launcher` and the system popup now use more generous vertical and horizontal padding, so rows, labels,

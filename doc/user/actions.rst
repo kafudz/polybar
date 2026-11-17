@@ -171,8 +171,8 @@ internal/power
   Opens the built-in power menu popup with Lock, Log out, Reboot, and Shut
   down actions. Clicking an action runs its configured command and closes the
   popup. Press Escape or click anywhere outside an action to close it without
-  running anything. The popup can also be navigated with the arrow keys and
-  Enter. This action is bound to left click by default.
+  running anything. The popup can also be navigated with the arrow keys, the
+  mouse wheel, and Enter. This action is bound to left click by default.
 
 :``popup-center``:
   Opens the same power menu popup in the center of the screen instead of below

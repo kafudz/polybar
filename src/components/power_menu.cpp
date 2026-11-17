@@ -618,6 +618,18 @@ namespace {
             auto* button = reinterpret_cast<xcb_button_press_event_t*>(event);
             const int pointer_x_pos = button->root_x - state.x;
             const int pointer_y_pos = button->root_y - state.y;
+
+            if (button->detail == 4 || button->detail == 5) {
+              if (button->detail == 4) {
+                state.active = state.active <= 0 ? 3 : state.active - 1;
+              } else {
+                state.active = state.active < 0 || state.active >= 3 ? 0 : state.active + 1;
+              }
+
+              redraw();
+              break;
+            }
+
             const int row = row_at(state, pointer_x_pos, pointer_y_pos);
 
             if (row >= 0) {
