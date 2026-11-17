@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <stdexcept>
@@ -47,6 +48,7 @@ namespace {
 
   struct launcher_entry {
     string name{};
+    string name_lower{};
     string exec{};
     bool terminal{false};
   };
@@ -70,7 +72,15 @@ namespace {
     int scroll{0};
 
     string font{"sans"};
-    vector<launcher_entry> entries;
+    std::shared_ptr<const vector<launcher_entry>> entries;
+
+    /**
+     * Indices into `entries` matching the current query. Cached so that
+     * painting and pointer motion do not re-scan the application list.
+     */
+    vector<int> matches{};
+    string matches_query{};
+    bool matches_valid{false};
 
     rgb background{0.0, 0.0, 0.0};
     rgb foreground{1.0, 1.0, 1.0};
@@ -79,6 +89,29 @@ namespace {
     rgb hover{0.1, 0.1, 0.1};
     rgb input{0.08, 0.08, 0.09};
   };
+
+  /**
+   * Application list shared by all popup invocations.
+   *
+   * Scanning the XDG data directories and parsing every .desktop file is only
+   * done once and refreshed in the background, so opening the launcher and
+   * typing never waits for the filesystem.
+   */
+  struct entry_cache {
+    std::mutex lock;
+    std::shared_ptr<const vector<launcher_entry>> entries;
+    std::chrono::steady_clock::time_point loaded_at{};
+    std::atomic<bool> loading{false};
+  };
+
+  /**
+   * Intentionally leaked so a detached scan thread can never touch a
+   * destroyed mutex while polybar is shutting down.
+   */
+  entry_cache& get_entry_cache() {
+    static entry_cache* cache = new entry_cache();
+    return *cache;
+  }
 
   rgb make_rgb(const rgba& color, const rgb& fallback) {
     if (!color.has_color() || color.get_type() == rgba::type::ALPHA_ONLY) {
@@ -359,6 +392,7 @@ namespace {
     }
 
     entry.name = std::move(name);
+    entry.name_lower = string_util::lower(entry.name);
     entry.exec = clean_exec(exec);
     entry.terminal = terminal;
     return !entry.exec.empty();
@@ -423,42 +457,108 @@ namespace {
     }
 
     std::sort(entries.begin(), entries.end(), [](const launcher_entry& a, const launcher_entry& b) {
-      const string lhs = string_util::lower(a.name);
-      const string rhs = string_util::lower(b.name);
-
-      if (lhs == rhs) {
+      if (a.name_lower == b.name_lower) {
         return a.name < b.name;
       }
 
-      return lhs < rhs;
+      return a.name_lower < b.name_lower;
     });
 
     return entries;
   }
 
-  vector<const launcher_entry*> filtered_entries(const launcher_state& state) {
-    vector<const launcher_entry*> result;
+  std::shared_ptr<const vector<launcher_entry>> cached_entries() {
+    std::lock_guard<std::mutex> lock(get_entry_cache().lock);
+    return get_entry_cache().entries;
+  }
 
-    if (state.query.empty()) {
-      result.reserve(state.entries.size());
+  void store_entries(std::shared_ptr<const vector<launcher_entry>> entries) {
+    std::lock_guard<std::mutex> lock(get_entry_cache().lock);
+    get_entry_cache().entries = std::move(entries);
+    get_entry_cache().loaded_at = std::chrono::steady_clock::now();
+  }
 
-      for (const auto& entry : state.entries) {
-        result.emplace_back(&entry);
+  /**
+   * Refreshes the cached application list in the background.
+   *
+   * When `max_age` is non-zero the list is only rescanned if the cached copy
+   * is older than that, so opening the launcher never blocks on the scan.
+   */
+  void refresh_entries_async(std::chrono::seconds max_age = std::chrono::seconds(60)) {
+    {
+      std::lock_guard<std::mutex> lock(get_entry_cache().lock);
+
+      if (get_entry_cache().entries != nullptr &&
+          std::chrono::steady_clock::now() - get_entry_cache().loaded_at < max_age) {
+        return;
       }
-
-      return result;
     }
 
-    const string query = string_util::lower(state.query);
-    result.reserve(state.entries.size());
+    if (get_entry_cache().loading.exchange(true)) {
+      return;
+    }
 
-    for (const auto& entry : state.entries) {
-      if (string_util::lower(entry.name).find(query) != string::npos) {
-        result.emplace_back(&entry);
+    try {
+      std::thread([] {
+        try {
+          store_entries(std::make_shared<const vector<launcher_entry>>(load_entries()));
+        } catch (const std::exception& err) {
+          logger::make().err("launcher: could not refresh applications (%s)", err.what());
+        }
+
+        get_entry_cache().loading = false;
+      }).detach();
+    } catch (const std::exception& err) {
+      get_entry_cache().loading = false;
+      logger::make().err("launcher: could not start the application scan (%s)", err.what());
+    }
+  }
+
+  /**
+   * Recomputes the entries matching the current query.
+   *
+   * Prefix matches are listed before substring matches so that typing the
+   * start of a name immediately puts it at the top.
+   */
+  void refresh_matches(launcher_state& state) {
+    state.matches.clear();
+
+    if (state.entries != nullptr) {
+      const string query = string_util::lower(state.query);
+      const auto& entries = *state.entries;
+      state.matches.reserve(entries.size());
+
+      if (query.empty()) {
+        for (size_t i = 0; i < entries.size(); i++) {
+          state.matches.push_back(static_cast<int>(i));
+        }
+      } else {
+        for (size_t i = 0; i < entries.size(); i++) {
+          if (entries[i].name_lower.compare(0, query.size(), query) == 0) {
+            state.matches.push_back(static_cast<int>(i));
+          }
+        }
+
+        for (size_t i = 0; i < entries.size(); i++) {
+          const auto& name = entries[i].name_lower;
+
+          if (name.compare(0, query.size(), query) != 0 && name.find(query) != string::npos) {
+            state.matches.push_back(static_cast<int>(i));
+          }
+        }
       }
     }
 
-    return result;
+    state.matches_query = state.query;
+    state.matches_valid = true;
+  }
+
+  const vector<int>& matched_indices(launcher_state& state) {
+    if (!state.matches_valid || state.matches_query != state.query) {
+      refresh_matches(state);
+    }
+
+    return state.matches;
   }
 
   void reset_selection(launcher_state& state) {
@@ -488,7 +588,7 @@ namespace {
   }
 
   void move_selection(launcher_state& state, int delta) {
-    const int count = static_cast<int>(filtered_entries(state).size());
+    const int count = static_cast<int>(matched_indices(state).size());
 
     if (count <= 0) {
       state.active = 0;
@@ -568,20 +668,21 @@ namespace {
       cairo_stroke(cr);
     }
 
-    const vector<const launcher_entry*> entries = filtered_entries(state);
+    const auto& matches = state.matches;
+    const auto& all_entries = *state.entries;
     const double name_size = 12.0 * state.scale;
     const double command_size = 12.0 * state.scale;
 
-    if (entries.empty()) {
+    if (matches.empty()) {
       draw_text_left(cr, "No applications found", state.pad + 16.0 * state.scale,
           state.list_top + state.row_height / 2.0, 12.0 * state.scale, state.muted);
     } else {
-      const int scroll = std::clamp(state.scroll, 0, std::max(0, static_cast<int>(entries.size()) - 1));
+      const int scroll = std::clamp(state.scroll, 0, std::max(0, static_cast<int>(matches.size()) - 1));
 
       for (int row = 0; row < state.visible_rows; row++) {
         const int index = scroll + row;
 
-        if (index >= static_cast<int>(entries.size())) {
+        if (index >= static_cast<int>(matches.size())) {
           break;
         }
 
@@ -595,7 +696,7 @@ namespace {
           cairo_fill(cr);
         }
 
-        const launcher_entry& entry = *entries[index];
+        const launcher_entry& entry = all_entries[matches[index]];
         const double row_text_x = state.pad + 16.0 * state.scale;
         const double row_text_right = state.width - state.pad - 16.0 * state.scale;
         const double row_text_width = row_text_right - row_text_x;
@@ -614,9 +715,9 @@ namespace {
     }
 
     const double footer_y = state.footer_top + 14.0 * state.scale;
-    const string count = entries.empty() ? "No matches"
-                                         : std::to_string(entries.size()) +
-            (entries.size() == 1 ? " application" : " applications");
+    const string count = matches.empty() ? "No matches"
+                                         : std::to_string(matches.size()) +
+            (matches.size() == 1 ? " application" : " applications");
 
     draw_text_left(cr, count, state.pad, footer_y, 12.0 * state.scale, state.muted);
     draw_text_right(cr, "Up/Down · Enter · Esc", state.width - state.pad, footer_y,
@@ -727,7 +828,7 @@ namespace {
     }
   }
 
-  int row_at(const launcher_state& state, const vector<const launcher_entry*>& entries, int px, int py) {
+  int row_at(const launcher_state& state, const vector<int>& matches, int px, int py) {
     if (px < state.pad || px >= state.width - state.pad || py < state.list_top) {
       return -1;
     }
@@ -739,7 +840,7 @@ namespace {
     }
 
     const int index = state.scroll + row;
-    return index < static_cast<int>(entries.size()) ? index : -1;
+    return index < static_cast<int>(matches.size()) ? index : -1;
   }
 
   xcb_visualtype_t* find_visualtype(xcb_screen_t* screen) {
@@ -812,7 +913,18 @@ namespace {
       state.width = static_cast<int>(std::round(520.0 * scale));
       state.list_top = state.pad + state.search_height + static_cast<int>(std::round(10.0 * scale));
       state.font = settings.font.empty() ? "sans" : settings.font;
-      state.entries = load_entries();
+      state.entries = cached_entries();
+
+      if (state.entries == nullptr) {
+        // Very first open (the module normally preloads the list at startup).
+        state.entries = std::make_shared<const vector<launcher_entry>>(load_entries());
+        store_entries(state.entries);
+      }
+
+      // Rescan in the background when the cached list is old, so newly
+      // installed applications show up on the next open without delaying this one.
+      refresh_entries_async();
+      refresh_matches(state);
 
       state.background = make_rgb(settings.background, {0.06, 0.06, 0.07});
       state.foreground = make_rgb(settings.foreground, {0.85, 0.85, 0.85});
@@ -850,6 +962,16 @@ namespace {
       const uint32_t stack_above[] = {XCB_STACK_MODE_ABOVE};
       xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, stack_above);
       xcb_flush(connection);
+
+      const auto redraw = [&] {
+        matched_indices(state);
+        paint(connection, pixmap, visual, state);
+        present(connection, pixmap, window, gc, state);
+      };
+
+      // Draw the first frame before grabbing input: the grabs are round trips
+      // and must not leave the freshly mapped window blank.
+      redraw();
 
       for (int attempt = 0; attempt < 100; attempt++) {
         xcb_grab_pointer_reply_t* grab_reply = xcb_grab_pointer_reply(connection,
@@ -899,11 +1021,6 @@ namespace {
 
       const auto keymap = get_keymap(connection);
 
-      const auto redraw = [&] {
-        paint(connection, pixmap, visual, state);
-        present(connection, pixmap, window, gc, state);
-      };
-
       const auto resize = [&] {
         const int old_height = state.height;
         update_layout(state, settings, screen->width_in_pixels, screen->height_in_pixels, margin);
@@ -926,8 +1043,6 @@ namespace {
             values);
         xcb_flush(connection);
       };
-
-      redraw();
 
       bool running = true;
 
@@ -963,8 +1078,8 @@ namespace {
             auto* motion = reinterpret_cast<xcb_motion_notify_event_t*>(event);
             const int pointer_x_pos = motion->root_x - state.x;
             const int pointer_y_pos = motion->root_y - state.y;
-            const auto entries = filtered_entries(state);
-            const int active = row_at(state, entries, pointer_x_pos, pointer_y_pos);
+            const auto& matches = matched_indices(state);
+            const int active = row_at(state, matches, pointer_x_pos, pointer_y_pos);
 
             if (active >= 0 && active != state.active) {
               state.active = active;
@@ -991,11 +1106,11 @@ namespace {
               break;
             }
 
-            const auto entries = filtered_entries(state);
-            const int row = row_at(state, entries, pointer_x_pos, pointer_y_pos);
+            const auto& matches = matched_indices(state);
+            const int row = row_at(state, matches, pointer_x_pos, pointer_y_pos);
 
-            if (row >= 0 && row < static_cast<int>(entries.size())) {
-              launch_entry(*entries[row], settings);
+            if (row >= 0 && row < static_cast<int>(matches.size())) {
+              launch_entry((*state.entries)[matches[row]], settings);
               running = false;
             }
 
@@ -1016,11 +1131,11 @@ namespace {
             if (keysym == 0xFF1B) { // Escape
               running = false;
             } else if (keysym == 0xFF0D || keysym == 0xFF8D) { // Return, KP_Enter
-              const auto entries = filtered_entries(state);
+              const auto& matches = matched_indices(state);
 
-              if (!entries.empty()) {
-                const int active = std::clamp(state.active, 0, static_cast<int>(entries.size()) - 1);
-                launch_entry(*entries[active], settings);
+              if (!matches.empty()) {
+                const int active = std::clamp(state.active, 0, static_cast<int>(matches.size()) - 1);
+                launch_entry((*state.entries)[matches[active]], settings);
                 running = false;
               }
             } else if (keysym == 0xFF52) { // Up
@@ -1126,6 +1241,16 @@ namespace {
 } // namespace
 
 namespace launcher_menu {
+  /**
+   * Starts scanning the installed applications in the background.
+   *
+   * Called when the launcher module starts so the list is already cached by
+   * the time the popup is opened.
+   */
+  void preload() {
+    refresh_entries_async();
+  }
+
   void toggle(const launcher_menu_settings& settings) {
     if (g_open.exchange(true)) {
       g_close_requested = true;

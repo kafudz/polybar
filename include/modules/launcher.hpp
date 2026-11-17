@@ -18,6 +18,7 @@ namespace modules {
     explicit launcher_module(const bar_settings&, string, const config&);
     ~launcher_module() override;
 
+    void start() override;
     void update() {}
     string get_output();
     bool build(builder* builder, const string& tag) const;

@@ -28,6 +28,14 @@ struct launcher_menu_settings {
 
 namespace launcher_menu {
   /**
+   * Start scanning the installed applications in the background.
+   *
+   * The list is cached in the polybar process, so the popup can open without
+   * waiting for the XDG directories to be scanned.
+   */
+  void preload();
+
+  /**
    * Open the application launcher popup below (or above) the bar.
    *
    * If the popup is already open, a close request is issued instead.

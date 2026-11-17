@@ -58,6 +58,10 @@ by [@stringlapse](https://github.com/stringlapse).
   screen.
 - `internal/date`: The calendar popup is wider, so the weather footer shows the complete location and conditions on
   one line. Longer weather details wrap onto a second line instead of being cut off.
+- `internal/launcher`: The application list is now scanned once in the background when the bar starts and cached, so
+  the popup opens immediately instead of rescanning the XDG directories. Filter matches are cached, names that start
+  with the query are listed first, and the first frame is drawn before input is grabbed, so the launcher feels more
+  responsive.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
   font size of 12 px, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.

@@ -37,6 +37,11 @@ namespace modules {
     launcher_menu::close();
   }
 
+  void launcher_module::start() {
+    launcher_menu::preload();
+    static_module<launcher_module>::start();
+  }
+
   string launcher_module::get_output() {
     string output{module::get_output()};
 
