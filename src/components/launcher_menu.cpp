@@ -467,14 +467,12 @@ namespace {
   }
 
   /**
-   * Sizes the popup to the current number of matches, capped at
-   * MAX_VISIBLE_ROWS. At least one row is always reserved so the empty state
-   * and the footer remain visible.
+   * Keeps the popup at a fixed size: the list always reserves
+   * MAX_VISIBLE_ROWS rows so filtering does not resize the window.
    */
   void update_layout(launcher_state& state, const launcher_menu_settings& settings, int screen_width,
       int screen_height, int margin) {
-    const int count = static_cast<int>(filtered_entries(state).size());
-    state.visible_rows = std::clamp(count, 1, MAX_VISIBLE_ROWS);
+    state.visible_rows = MAX_VISIBLE_ROWS;
     state.footer_top = state.list_top + state.visible_rows * state.row_height +
         static_cast<int>(std::round(8.0 * state.scale));
     state.height = state.footer_top + static_cast<int>(std::round(28.0 * state.scale)) + state.pad;

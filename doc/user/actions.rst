@@ -187,8 +187,8 @@ internal/launcher
   applications found in the XDG application directories, with a search field
   above the list. Type to filter, use Up/Down (or the mouse wheel) to move the
   selection, and press Enter or click an application to launch it. Press Escape
-  or click outside the popup to close it. The popup shows up to 15 applications
-  at once and resizes itself to the current number of matches.
+  or click outside the popup to close it. The popup statically reserves room
+  for 15 applications, scrolling the list when there are more.
 
   The ``terminal`` setting specifies the terminal command used for desktop
   entries with ``Terminal=true``, for example ``terminal = xterm -e``. If it is

@@ -223,9 +223,7 @@ namespace {
     layout.list_row_height = 34.0 * state.scale;
     layout.hint_height = 30.0 * state.scale;
     layout.message_height = 26.0 * state.scale;
-    layout.visible_rows = state.bluetooth_enabled
-        ? std::clamp(static_cast<int>(state.bluetooth_devices.size()), 1, 5)
-        : 0;
+    layout.visible_rows = state.bluetooth_enabled ? 5 : 0;
     return layout;
   }
 

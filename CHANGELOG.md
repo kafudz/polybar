@@ -50,8 +50,9 @@ by [@stringlapse](https://github.com/stringlapse).
   connections such as `Wired connection 1` are no longer cut off.
 - `internal/launcher` and the system popup now use more generous vertical and horizontal padding, so rows, labels,
   and the search field no longer feel cramped at the larger font size.
-- `internal/launcher`: The popup now shows up to 15 applications at once and dynamically resizes to the number of
-  matching entries as the search filter changes.
+- All popup menus now keep a static size. `internal/launcher` always reserves space for 15 applications, and the
+  system popup's network and Bluetooth lists always use five rows, so the windows no longer resize while filtering
+  or when the device list changes.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
   font size of 12 px, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
