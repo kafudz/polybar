@@ -461,14 +461,16 @@ namespace {
 
     const double line1_y = state.weather_top + 15.0 * scale;
     const double line2_y = state.weather_top + 33.0 * scale;
+    const double line3_y = state.weather_top + 51.0 * scale;
+    const double status_y = state.weather_top + state.weather_height / 2.0;
 
     if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading weather…", state.pad, line1_y, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Loading weather…", state.pad, status_y, 12.0 * scale, state.muted);
       return;
     }
 
     if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Weather unavailable", state.pad, line1_y, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Weather unavailable", state.pad, status_y, 12.0 * scale, state.muted);
       return;
     }
 
@@ -507,8 +509,40 @@ namespace {
     append(state.weather.wind, "");
 
     const double detail_size = 12.0 * scale;
-    draw_text_left(cr, fit_text(cr, detail, state.width - 2.0 * state.pad, detail_size), state.pad, line2_y,
-        detail_size, state.muted);
+    const double detail_width = state.width - 2.0 * state.pad;
+
+    string first_line = detail;
+    string second_line;
+
+    // Keep the whole status visible: if it does not fit on one line, move the
+    // trailing sections to a second line instead of truncating them.
+    if (text_width(cr, first_line, detail_size) > detail_width) {
+      const string separator = "  ·  ";
+
+      while (!first_line.empty()) {
+        const auto split = first_line.rfind(separator);
+
+        if (split == string::npos) {
+          break;
+        }
+
+        const string tail = first_line.substr(split + separator.size());
+        first_line.erase(split);
+        second_line = second_line.empty() ? tail : tail + separator + second_line;
+
+        if (text_width(cr, first_line, detail_size) <= detail_width) {
+          break;
+        }
+      }
+    }
+
+    draw_text_left(cr, fit_text(cr, first_line, detail_width, detail_size), state.pad, line2_y, detail_size,
+        state.muted);
+
+    if (!second_line.empty()) {
+      draw_text_left(cr, fit_text(cr, second_line, detail_width, detail_size), state.pad, line3_y,
+          detail_size, state.muted);
+    }
   }
 
   string format_time(const std::tm& time, const char* format, const string& locale) {
@@ -770,14 +804,14 @@ namespace {
       state.pad = static_cast<int>(std::round(10.0 * scale));
       state.header_height = static_cast<int>(std::round(32.0 * scale));
       state.weekday_height = static_cast<int>(std::round(18.0 * scale));
-      state.cell_width = static_cast<int>(std::round(34.0 * scale));
+      state.cell_width = static_cast<int>(std::round(46.0 * scale));
       state.cell_height = static_cast<int>(std::round(28.0 * scale));
       state.width = 7 * state.cell_width + 2 * state.pad;
 
       const int grid_bottom = state.pad + state.header_height + state.weekday_height + 6 * state.cell_height;
       state.weather_enabled = settings.weather;
       state.weather_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      state.weather_height = state.weather_enabled ? static_cast<int>(std::round(48.0 * scale)) : 0;
+      state.weather_height = state.weather_enabled ? static_cast<int>(std::round(62.0 * scale)) : 0;
       state.height = state.weather_enabled ? state.weather_top + state.weather_height : grid_bottom + state.pad;
 
       state.week_starts_on_monday = settings.week_starts_on_monday;

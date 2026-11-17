@@ -161,8 +161,9 @@ internal/date
   shows ``Loading weather…`` until the request finishes. Use
   ``calendar-weather-location`` to select the location (for example
   ``calendar-weather-location = Padalarang``); leave it empty to let wttr.in
-  detect the location from the request. If the request fails, the footer shows
-  ``Weather unavailable``.
+  detect the location from the request. The footer shows the full location and
+  conditions, wrapping onto a second line when they do not fit. If the request
+  fails, the footer shows ``Weather unavailable``.
 
 internal/power
 ^^^^^^^^^^^^^^
