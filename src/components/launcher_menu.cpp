@@ -477,7 +477,7 @@ namespace {
         static_cast<int>(std::round(8.0 * state.scale));
     state.height = state.footer_top + static_cast<int>(std::round(28.0 * state.scale)) + state.pad;
 
-    state.x = (screen_width - state.width) / 2;
+    state.x = settings.bar_x + settings.bar_width / 2 - state.width / 2;
     state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
                                   : settings.bar_y + settings.bar_height + margin;
 

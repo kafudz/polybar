@@ -2072,19 +2072,8 @@ namespace {
       state.last_bluetooth_refresh = std::chrono::steady_clock::now();
 
       const int margin = static_cast<int>(std::round(4.0 * scale));
-      int pointer_x = settings.bar_x + settings.bar_width / 2;
-      int pointer_y = settings.bar_y + settings.bar_height / 2;
 
-      xcb_query_pointer_reply_t* pointer_reply = xcb_query_pointer_reply(connection,
-          xcb_query_pointer(connection, screen->root), nullptr);
-
-      if (pointer_reply != nullptr) {
-        pointer_x = pointer_reply->root_x;
-        pointer_y = pointer_reply->root_y;
-        std::free(pointer_reply);
-      }
-
-      state.x = pointer_x - state.width / 2;
+      state.x = settings.bar_x + settings.bar_width / 2 - state.width / 2;
       state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
                                     : settings.bar_y + settings.bar_height + margin;
 
@@ -2092,8 +2081,6 @@ namespace {
       const int max_y = std::max(margin, static_cast<int>(screen->height_in_pixels) - state.height - margin);
       state.x = std::clamp(state.x, margin, max_x);
       state.y = std::clamp(state.y, margin, max_y);
-
-      (void)pointer_y;
 
       const uint32_t background_pixel = (static_cast<uint32_t>(state.background.r * 255.0) << 16) |
           (static_cast<uint32_t>(state.background.g * 255.0) << 8) |
