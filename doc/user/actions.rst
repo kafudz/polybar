@@ -193,7 +193,9 @@ internal/launcher
   or click outside the popup to close it. The popup statically reserves room
   for 15 applications, scrolling the list when there are more. The application
   list is cached, so the popup opens immediately; matching is case-insensitive
-  and applications whose names start with the query are listed first.
+  and applications whose names start with the query are listed first. Simple
+  commands are executed directly without a shell, while entries that rely on
+  shell syntax still run through ``/bin/sh``.
 
   The ``terminal`` setting specifies the terminal command used for desktop
   entries with ``Terminal=true``, for example ``terminal = xterm -e``. If it is

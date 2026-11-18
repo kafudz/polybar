@@ -605,9 +605,121 @@ namespace {
     }
   }
 
+  /**
+   * Splits a desktop entry command into arguments.
+   *
+   * Returns false when the command uses shell constructs (pipes,
+   * redirections, expansions, ...), in which case it must run through the
+   * shell. Quoted arguments and backslash escapes are handled here.
+   */
+  bool split_command(const string& command, vector<string>& args) {
+    args.clear();
+    string current;
+    bool in_token = false;
+    bool in_single = false;
+    bool in_double = false;
+
+    for (size_t i = 0; i < command.size(); i++) {
+      const char c = command[i];
+
+      if (in_single) {
+        if (c == '\'') {
+          in_single = false;
+        } else {
+          current += c;
+        }
+        continue;
+      }
+
+      if (in_double) {
+        if (c == '"') {
+          in_double = false;
+        } else if (c == '\\' && i + 1 < command.size()) {
+          const char next = command[++i];
+
+          if (next == '"' || next == '\\') {
+            current += next;
+          } else {
+            current += '\\';
+            current += next;
+          }
+        } else {
+          current += c;
+        }
+        continue;
+      }
+
+      if (c == '|' || c == '&' || c == ';' || c == '<' || c == '>' || c == '(' || c == ')' ||
+          c == '$' || c == '`' || c == '*' || c == '?' || c == '[' || c == ']' || c == '{' ||
+          c == '}' || c == '~' || c == '\n') {
+        return false;
+      }
+
+      if (c == '\'') {
+        in_single = true;
+        in_token = true;
+      } else if (c == '"') {
+        in_double = true;
+        in_token = true;
+      } else if (c == '\\' && i + 1 < command.size()) {
+        current += command[++i];
+        in_token = true;
+      } else if (std::isspace(static_cast<unsigned char>(c))) {
+        if (in_token) {
+          args.push_back(current);
+          current.clear();
+          in_token = false;
+        }
+      } else {
+        current += c;
+        in_token = true;
+      }
+    }
+
+    if (in_single || in_double) {
+      return false;
+    }
+
+    if (in_token) {
+      args.push_back(current);
+    }
+
+    return !args.empty();
+  }
+
+  /**
+   * Runs a command in a detached process.
+   *
+   * Simple commands are executed directly with `execvp` to skip the shell
+   * startup cost. Commands that depend on shell syntax, or whose program is
+   * not available, still go through `/bin/sh`.
+   */
   void run_async(const string& command_line) {
     if (command_line.empty()) {
       return;
+    }
+
+    vector<string> args;
+
+    if (split_command(command_line, args) && program_in_path(args.front())) {
+      vector<char*> argv;
+      argv.reserve(args.size() + 1);
+
+      for (auto& arg : args) {
+        argv.push_back(const_cast<char*>(arg.c_str()));
+      }
+
+      argv.push_back(nullptr);
+
+      try {
+        process_util::fork_detached([&args, &argv] {
+          execvp(args.front().c_str(), argv.data());
+          _Exit(127);
+        });
+        return;
+      } catch (const std::exception& err) {
+        logger::make().err("launcher: could not run command (%s)", err.what());
+      }
     }
 
     try {

@@ -62,6 +62,8 @@ by [@stringlapse](https://github.com/stringlapse).
   the popup opens immediately instead of rescanning the XDG directories. Filter matches are cached, names that start
   with the query are listed first, and the first frame is drawn before input is grabbed, so the launcher feels more
   responsive.
+- `internal/launcher`: Simple desktop entries are now started directly with `execvp` instead of `/bin/sh -c`, skipping
+  the shell startup cost. Entries that use shell syntax (pipes, redirections, expansions) still run through the shell.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use a minimum
   font size of 12 px, making the popups easier to read.
 - `http_downloader` accepts an optional total request timeout, so downloads can be bounded even when the connection is established.
