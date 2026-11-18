@@ -104,6 +104,7 @@ namespace modules {
       map_entry<power_module>(),
       map_entry<ipc_module>(),
       map_entry<launcher_module>(),
+      map_entry<networkmanager_module>(),
   };
 
   module_t make_module(string&& type, const bar_settings& bar, string module_name, const logger& log, const config& config) {

@@ -16,6 +16,7 @@
 #include "modules/memory.hpp"
 #include "modules/menu.hpp"
 #include "modules/meta/base.hpp"
+#include "modules/networkmanager.hpp"
 #include "modules/power.hpp"
 #include "modules/script.hpp"
 #include "modules/temperature.hpp"

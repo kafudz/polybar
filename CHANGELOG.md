@@ -37,6 +37,10 @@ by [@stringlapse](https://github.com/stringlapse).
   `.desktop` applications. Left-clicking the module opens it; type to filter, use Up/Down to select, Enter to launch,
   and Escape or clicking outside to close. The `terminal` option sets the terminal command used for desktop entries
   with `Terminal=true`.
+- `internal/networkmanager`: Added a NetworkManager status module that reads the active connection through `nmcli`.
+  It shows the connection name, device, type, IP address, and Wi-Fi signal through label tokens such as `%icon%`,
+  `%connection%`, `%ip%`, and `%signal%`. Left-clicking the module opens the system popup with the NetworkManager
+  Wi-Fi controls. Use `interface` to limit the module to one device.
 - `internal/power`: Added mouse wheel navigation to the power menu popup, in addition to the arrow keys.
 - `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: The system popup now has a Bluetooth row. Expanding
   it shows a power switch and a list of paired devices; clicking a device connects or disconnects it, and the list can

@@ -100,6 +100,7 @@ set(POLY_SOURCES
   ${src_dir}/modules/menu.cpp
   ${src_dir}/modules/meta/base.cpp
   ${src_dir}/modules/meta/factory.cpp
+  ${src_dir}/modules/networkmanager.cpp
   ${src_dir}/modules/power.cpp
   ${src_dir}/modules/script.cpp
   ${src_dir}/modules/temperature.cpp

@@ -203,6 +203,21 @@ internal/launcher
 
   This action is bound to left click by default.
 
+internal/networkmanager
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The module reads the active connection from NetworkManager through `nmcli`.
+`label-connected` supports `%icon%`, `%connection%` (the profile name),
+`%device%`, `%type%`, `%ip%`, `%ssid%`, `%signal%`, and `%status%`.
+Use the optional `interface` setting to show a single device instead of
+letting the module pick the active connection.
+
+:``popup``:
+  Opens the built-in system popup with the NetworkManager Wi-Fi controls, as
+  well as the volume, brightness, battery, and Bluetooth sections. The popup
+  opens below the module (or above it, if the bar is at the bottom of the
+  screen). This action is bound to left click by default.
+
 internal/alsa
 ^^^^^^^^^^^^^
 
