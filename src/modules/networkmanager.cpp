@@ -215,8 +215,10 @@ namespace modules {
         run_command("nmcli -t -f GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS device show" +
                     target + " 2>/dev/null");
 
-    const device_info* active = nullptr;
-    const device_info* fallback = nullptr;
+    device_info active;
+    bool have_active = false;
+    device_info fallback;
+    bool have_fallback = false;
 
     if (result.first == 0) {
       for (const auto& device : parse_devices(result.second)) {
@@ -226,27 +228,30 @@ namespace modules {
 
         if (m_interface.empty() || device.device == m_interface) {
           if (device.type == "wifi") {
-            active = &device;
+            active = device;
+            have_active = true;
             break;
           }
 
-          if (fallback == nullptr) {
-            fallback = &device;
+          if (!have_fallback) {
+            fallback = device;
+            have_fallback = true;
           }
         }
       }
 
-      if (active == nullptr) {
+      if (!have_active && have_fallback) {
         active = fallback;
+        have_active = true;
       }
     }
 
-    const connection_state new_state = active == nullptr ? connection_state::DISCONNECTED : connection_state::CONNECTED;
+    const connection_state new_state = have_active ? connection_state::CONNECTED : connection_state::DISCONNECTED;
 
-    const string new_connection = active != nullptr ? active->connection : ""s;
-    const string new_device = active != nullptr ? active->device : ""s;
-    const string new_type = active != nullptr ? active->type : ""s;
-    const string new_ip = active != nullptr ? active->ip : ""s;
+    const string new_connection = have_active ? active.connection : ""s;
+    const string new_device = have_active ? active.device : ""s;
+    const string new_type = have_active ? active.type : ""s;
+    const string new_ip = have_active ? active.ip : ""s;
     const string new_ssid = new_type == "wifi" ? new_connection : ""s;
     const string new_signal = new_type == "wifi" ? wifi_signal() : ""s;
 
