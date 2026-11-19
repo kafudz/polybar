@@ -2583,13 +2583,10 @@ namespace {
               }
             } else if (button->detail == 1 && pointer_y_pos >= power_row_top(state) &&
             pointer_y_pos < power_row_top(state) + state.row_height) {
+          // Clicking the Power row closes the popup; the power module opens it
+          // directly with the section expanded.
           handled = true;
-          state.power_expanded = !state.power_expanded;
-          state.power_active = -1;
-
-          if (!sync_size()) {
-            redraw();
-          }
+          running = false;
         } else if (button->detail == 1 && state.power_expanded &&
         pointer_y_pos >= power_row_top(state) + state.row_height &&
         pointer_y_pos < power_row_top(state) + state.row_height + power_panel_height(state)) {

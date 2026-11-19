@@ -577,7 +577,13 @@ namespace {
         static_cast<int>(std::round(8.0 * state.scale));
     state.height = state.footer_top + static_cast<int>(std::round(28.0 * state.scale)) + state.pad;
 
-    state.x = settings.bar_x + settings.bar_width / 2 - state.width / 2;
+    // Nudge the launcher slightly toward the middle of the screen from the bar
+    // center, so it sits closer to the clock without fully following the menu
+    // module.
+    const int bar_center = settings.bar_x + settings.bar_width / 2;
+    const int screen_center = screen_width / 2;
+    const int nudge = std::clamp((screen_center - bar_center) / 3, -48, 48);
+    state.x = bar_center + nudge - state.width / 2;
     state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
                                   : settings.bar_y + settings.bar_height + margin;
 
