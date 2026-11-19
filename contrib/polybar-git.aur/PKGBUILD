@@ -1,42 +1,82 @@
-# Maintainer: Patrick Ziegler <p.ziegler96@gmail.com>
+# Maintainer: kafudz <apudmahfud@proton.me>
+
 _pkgname=polybar
 pkgname="${_pkgname}-git"
-pkgver=3.7.2
+pkgver=3.7.2.r0.g272bac4
 pkgrel=1
-pkgdesc="A fast and easy-to-use status bar"
-# aarch64 is not officially supported by polybar, it is only listed here for convenience
-arch=("i686" "x86_64" "aarch64")
-url="https://github.com/polybar/polybar"
-license=("MIT")
-depends=("libuv" "cairo" "xcb-util-image" "xcb-util-wm" "xcb-util-xrm"
-         "xcb-util-cursor" "alsa-lib" "libpulse" "libmpdclient" "libnl"
-         "jsoncpp" "curl")
-optdepends=("i3-wm: i3 module support")
-makedepends=("cmake" "git" "python" "pkg-config" "python-sphinx"
-             "python-packaging" "i3-wm")
+pkgdesc="A fast and easy-to-use status bar (kafudz fork)"
+arch=(i686 x86_64 aarch64)
+url="https://github.com/kafudz/polybar"
+license=(MIT)
+
+depends=(
+  cairo
+  curl
+  jsoncpp
+  libmpdclient
+  libnl
+  libpulse
+  libuv
+  alsa-lib
+  xcb-util-cursor
+  xcb-util-image
+  xcb-util-wm
+  xcb-util-xrm
+)
+makedepends=(
+  cmake
+  git
+  i3-wm
+  ninja
+  pkgconf
+  python
+  python-packaging
+  python-sphinx
+)
+
+optdepends=(
+  'i3-wm: i3 module support'
+  'networkmanager: NetworkManager integration for the networkmanager module'
+)
+
+provides=("${_pkgname}")
+conflicts=("${_pkgname}")
 backup=("etc/polybar/config.ini")
-provides=("polybar")
-conflicts=("polybar")
-source=("${_pkgname}::git+${url}.git")
-sha256sums=("SKIP")
+
+source=("${_pkgname}::git+https://github.com/kafudz/polybar.git")
+sha256sums=('SKIP')
 
 pkgver() {
-  git -C "${_pkgname}" describe --long --tags | sed "s/-/.r/;s/-/./g"
+  cd "${_pkgname}" || exit
+  git describe --long --tags 2>/dev/null \
+    | sed 's/^.*-//; s/-/.r/; s/-/./g'
 }
 
 prepare() {
-  git -C "${_pkgname}" submodule update --init --recursive
-  mkdir -p "${_pkgname}/build"
+  cd "${_pkgname}" || exit
+  git submodule update --init --recursive
 }
 
 build() {
-  cd "${_pkgname}/build" || exit 1
-  # Force cmake to use system python (to detect xcbgen)
-  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3 ..
-  cmake --build .
+  cmake \
+    -S "${_pkgname}" \
+    -B build \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DPYTHON_EXECUTABLE=/usr/bin/python3 \
+    -DBUILD_TESTS=OFF
+
+  cmake --build build
+}
+
+check() {
+  cmake --build build --target test
 }
 
 package() {
-  cmake --build "${_pkgname}/build" --target install -- DESTDIR="${pkgdir}"
-  install -Dm644 "${_pkgname}/LICENSE" "${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE"
+  DESTDIR="${pkgdir}" cmake --install build
+
+  install -Dm644 "${_pkgname}/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE"
 }
