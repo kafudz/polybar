@@ -31,6 +31,24 @@ namespace {
     return result;
   }
 
+  string shell_quote(const string& value) {
+    string result;
+    result.reserve(value.size() + 2);
+    result.push_back('\'');
+
+    for (char c : value) {
+      if (c == '\'') {
+        // Close the quoted string, append an escaped quote, and reopen it.
+        result += "'\\''";
+      } else {
+        result.push_back(c);
+      }
+    }
+
+    result.push_back('\'');
+    return result;
+  }
+
   vector<string> split_lines(const string& text) {
     vector<string> lines;
     string current;
@@ -210,7 +228,7 @@ namespace modules {
   }
 
   bool networkmanager_module::update() {
-    const string target = m_interface.empty() ? ""s : " " + m_interface;
+    const string target = m_interface.empty() ? ""s : " " + shell_quote(m_interface);
     auto result =
         run_command("nmcli -t -f GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS device show" +
                     target + " 2>/dev/null");
