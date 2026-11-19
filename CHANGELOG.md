@@ -27,12 +27,12 @@ by [@stringlapse](https://github.com/stringlapse).
   outside its controls. The network panel can turn Wi-Fi on or off and connect to visible networks. Secured networks
   without a saved profile prompt for a password inside the popup; press Enter to connect or Escape to cancel.
   Left-clicking the volume module now opens this popup; right-click it to toggle mute.
-- `internal/power`: Added a built-in power menu popup with Lock, Log out, Reboot, and Shut down actions.
-  Left-clicking the module opens the popup, which can be controlled with the mouse or the arrow keys and closes on
-  Escape or when clicking anywhere outside an action. The commands can be changed with `lock-command`,
-  `logout-command`, `reboot-command`, and `shutdown-command`.
-  The `popup-center` action opens the popup in the center of the screen instead of next to the bar, which is useful
-  for keyboard shortcuts.
+- `internal/power`: Added a power section to the system popup with Lock, Log out, Reboot, and Shut down actions.
+  Left-clicking the module opens the system popup with that section expanded. The actions can be controlled with the
+  mouse or the arrow keys (Enter runs the highlighted action) and close the popup on Escape or when clicking
+  anywhere outside a control. The commands can be changed with `lock-command`, `logout-command`, `reboot-command`,
+  and `shutdown-command`. The `popup-center` action opens the same popup in the center of the screen instead of next
+  to the bar, which is useful for keyboard shortcuts.
 - `internal/launcher`: Added a native application launcher popup with a search field and a list of installed
   `.desktop` applications. Left-clicking the module opens it; type to filter, use Up/Down to select, Enter to launch,
   and Escape or clicking outside to close. The `terminal` option sets the terminal command used for desktop entries
@@ -41,12 +41,16 @@ by [@stringlapse](https://github.com/stringlapse).
   It shows the connection name, device, type, IP address, and Wi-Fi signal through label tokens such as `%icon%`,
   `%connection%`, `%ip%`, and `%signal%`. Left-clicking the module opens the system popup with the NetworkManager
   Wi-Fi controls. Use `interface` to limit the module to one device.
-- `internal/power`: Added mouse wheel navigation to the power menu popup, in addition to the arrow keys.
+- The power menu is now part of the system popup: it has a Power row that expands to Lock, Log out, Reboot, and
+  Shut down, and clicking the `internal/power` module opens the same popup with that section expanded.
 - `internal/pulseaudio`, `internal/backlight`, and `internal/battery`: The system popup now has a Bluetooth row. Expanding
   it shows a power switch and a list of paired devices; clicking a device connects or disconnects it, and the list can
   be scrolled with the mouse wheel.
 
 ### Changed
+- `internal/power`: The separate power menu window was merged into the system popup. The `popup` and
+  `popup-center` actions now open the system popup, so there is a single overlay for volume, brightness, battery,
+  network, Bluetooth, and power actions.
 - `internal/launcher`, `internal/power`, `internal/date` (calendar popup), and the system popup now use square
   corners instead of rounded ones, giving all popups a flat, consistent window style. The Wi-Fi and Bluetooth
   switches inside the system popup keep their rounded, pill-shaped track.
@@ -57,9 +61,8 @@ by [@stringlapse](https://github.com/stringlapse).
 - All popup menus now keep a static size. `internal/launcher` always reserves space for 15 applications, and the
   system popup's network and Bluetooth lists always use five rows, so the windows no longer resize while filtering
   or when the device list changes.
-- The power menu and system popups now open below the module that was clicked (the power and volume buttons), so
-  they stay under the part of the bar they belong to. `popup-center` still opens the power menu in the middle of the
-  screen.
+- The system popup opens below the module that was clicked (the power and volume buttons), so it stays under the
+  part of the bar it belongs to. `popup-center` still opens it in the middle of the screen.
 - `internal/date`: The calendar popup is wider, so the weather footer shows the complete location and conditions on
   one line. Longer weather details wrap onto a second line instead of being cut off.
 - `internal/launcher`: The application list is now scanned once in the background when the bar starts and cached, so

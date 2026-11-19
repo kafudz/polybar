@@ -6,6 +6,7 @@
 #include <cairo/cairo-xcb.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -97,6 +98,7 @@ namespace {
     rgb foreground{1.0, 1.0, 1.0};
     rgb border{0.3, 0.3, 0.3};
     rgb muted{0.6, 0.6, 0.6};
+    rgb hover{0.16, 0.16, 0.17};
     rgb alert{0.77, 0.47, 0.47};
 
     bool volume_available{false};
@@ -147,6 +149,10 @@ namespace {
     string bluetooth_message{};
     std::chrono::steady_clock::time_point bluetooth_message_until{};
     std::chrono::steady_clock::time_point last_bluetooth_refresh{};
+
+    bool power_expanded{false};
+    int power_active{-1};
+    std::array<string, 4> power_commands{};
 
     drag_target dragging{drag_target::NONE};
     bool volume_pending{false};
@@ -239,9 +245,24 @@ namespace {
     return layout.inner_pad + layout.switch_row_height + list_height + layout.message_height + layout.inner_pad;
   }
 
+  double power_row_top(const controls_state& state) {
+    return bluetooth_row_top(state) + state.row_height + bluetooth_panel_height(state);
+  }
+
+  double power_panel_height(const controls_state& state) {
+    if (!state.power_expanded) {
+      return 0.0;
+    }
+
+    const double inner_pad = 14.0 * state.scale;
+    const double row_height = 40.0 * state.scale;
+
+    return inner_pad + 4 * row_height + inner_pad;
+  }
+
   int popup_height(const controls_state& state) {
-    return static_cast<int>(std::round(state.pad + state.header_height + 5 * state.row_height +
-        network_panel_height(state) + bluetooth_panel_height(state) + state.pad));
+    return static_cast<int>(std::round(state.pad + state.header_height + 6 * state.row_height +
+        network_panel_height(state) + bluetooth_panel_height(state) + power_panel_height(state) + state.pad));
   }
 
   rgb make_rgb(const rgba& color, const rgb& fallback) {
@@ -526,6 +547,87 @@ namespace {
     rounded_rect(cr, x + 5.0 * u, y + 9.0 * u, 10.0 * u, 8.0 * u, 1.5 * u);
     set_source(cr, color);
     cairo_fill(cr);
+  }
+
+  void draw_logout(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double line_width = std::max(1.4, size * 0.09);
+    const double center_y = y + size * 0.50;
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, line_width);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    // Door.
+    cairo_move_to(cr, x + size * 0.18, y + size * 0.18);
+    cairo_line_to(cr, x + size * 0.18, y + size * 0.82);
+    cairo_line_to(cr, x + size * 0.48, y + size * 0.82);
+    cairo_stroke(cr);
+
+    // Arrow out of the door.
+    cairo_move_to(cr, x + size * 0.40, center_y);
+    cairo_line_to(cr, x + size * 0.82, center_y);
+    cairo_stroke(cr);
+
+    cairo_move_to(cr, x + size * 0.66, center_y - size * 0.16);
+    cairo_line_to(cr, x + size * 0.82, center_y);
+    cairo_line_to(cr, x + size * 0.66, center_y + size * 0.16);
+    cairo_stroke(cr);
+  }
+
+  void draw_reboot(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double cx = x + size / 2.0;
+    const double cy = y + size / 2.0;
+    const double radius = size * 0.30;
+    const double line_width = std::max(1.4, size * 0.09);
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, line_width);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    const double start = -PI / 2.0 + 0.55;
+    const double end = 3.0 * PI / 2.0 - 0.55;
+
+    cairo_new_path(cr);
+    cairo_arc(cr, cx, cy, radius, start, end);
+    cairo_stroke(cr);
+
+    // Arrowhead at the end of the arc.
+    const double tip_x = cx + radius * std::cos(end);
+    const double tip_y = cy + radius * std::sin(end);
+    const double tangent_x = -std::sin(end);
+    const double tangent_y = std::cos(end);
+    const double radial_x = std::cos(end);
+    const double radial_y = std::sin(end);
+    const double head = size * 0.17;
+
+    const double back_x = tip_x - tangent_x * head;
+    const double back_y = tip_y - tangent_y * head;
+
+    cairo_move_to(cr, back_x + radial_x * head * 0.6, back_y + radial_y * head * 0.6);
+    cairo_line_to(cr, tip_x, tip_y);
+    cairo_line_to(cr, back_x - radial_x * head * 0.6, back_y - radial_y * head * 0.6);
+    cairo_stroke(cr);
+  }
+
+  void draw_shutdown(cairo_t* cr, double x, double y, double size, const rgb& color) {
+    const double cx = x + size / 2.0;
+    const double cy = y + size * 0.56;
+    const double radius = size * 0.30;
+    const double line_width = std::max(1.4, size * 0.09);
+
+    set_source(cr, color);
+    cairo_set_line_width(cr, line_width);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+    cairo_new_path(cr);
+    cairo_arc(cr, cx, cy, radius, -PI / 2.0 + 0.55, 3.0 * PI / 2.0 - 0.55);
+    cairo_stroke(cr);
+
+    cairo_move_to(cr, cx, y + size * 0.10);
+    cairo_line_to(cr, cx, cy - radius * 0.55);
+    cairo_stroke(cr);
   }
 
   void draw_check(cairo_t* cr, double x, double y, double size, const rgb& color) {
@@ -1704,6 +1806,66 @@ namespace {
     }
   }
 
+  void draw_power_row(cairo_t* cr, const controls_state& state) {
+    const double icon_size = 20.0 * state.scale;
+    const double label_x = state.pad + icon_size + 12.0 * state.scale;
+    const double row_y = power_row_top(state);
+    const double label_y = row_y + 18.0 * state.scale;
+    const double chevron_size = 14.0 * state.scale;
+
+    draw_shutdown(cr, state.pad, row_y + 10.0 * state.scale, icon_size, state.foreground);
+    draw_text_left(cr, "Power", label_x, label_y, 12.0 * state.scale, state.foreground);
+    draw_text_right(cr, "Session", state.width - state.pad - 18.0 * state.scale, label_y, 12.0 * state.scale,
+        state.muted);
+    draw_chevron(cr, state.width - state.pad - chevron_size, row_y + 12.0 * state.scale, chevron_size, state.muted,
+        state.power_expanded);
+  }
+
+  void draw_power_panel(cairo_t* cr, const controls_state& state) {
+    const double inner_pad = 14.0 * state.scale;
+    const double row_height = 40.0 * state.scale;
+    const double panel_top = power_row_top(state) + state.row_height;
+    const double icon_size = 18.0 * state.scale;
+
+    static const std::array<const char*, 4> labels = {"Lock", "Log out", "Reboot", "Shut down"};
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, panel_top);
+    cairo_line_to(cr, state.width - state.pad, panel_top);
+    cairo_stroke(cr);
+
+    for (int row = 0; row < 4; row++) {
+      const double row_top = panel_top + inner_pad + row * row_height;
+      const double center_y = row_top + row_height / 2.0;
+
+      if (row == state.power_active) {
+        cairo_rectangle(cr, state.pad + 6.0 * state.scale, row_top + 2.0 * state.scale,
+            state.width - 2.0 * state.pad - 12.0 * state.scale, row_height - 4.0 * state.scale);
+        set_source(cr, state.hover);
+        cairo_fill(cr);
+      }
+
+      switch (row) {
+        case 0:
+          draw_lock(cr, state.pad + inner_pad, center_y - icon_size / 2.0, icon_size, state.foreground);
+          break;
+        case 1:
+          draw_logout(cr, state.pad + inner_pad, center_y - icon_size / 2.0, icon_size, state.foreground);
+          break;
+        case 2:
+          draw_reboot(cr, state.pad + inner_pad, center_y - icon_size / 2.0, icon_size, state.foreground);
+          break;
+        default:
+          draw_shutdown(cr, state.pad + inner_pad, center_y - icon_size / 2.0, icon_size, state.foreground);
+          break;
+      }
+
+      draw_text_left(cr, labels[row], state.pad + inner_pad + icon_size + 12.0 * state.scale, center_y,
+          12.0 * state.scale, state.foreground);
+    }
+  }
+
   void draw_bluetooth_panel(cairo_t* cr, const controls_state& state) {
     const double label_size = 12.0 * state.scale;
     const auto layout = get_bluetooth_layout(state);
@@ -1969,6 +2131,12 @@ namespace {
     if (state.bluetooth_expanded && state.bluetooth_available) {
       draw_bluetooth_panel(cr, state);
     }
+
+    draw_power_row(cr, state);
+
+    if (state.power_expanded) {
+      draw_power_panel(cr, state);
+    }
   }
 
   void paint(xcb_connection_t* connection, xcb_pixmap_t pixmap, xcb_visualtype_t* visual,
@@ -2060,6 +2228,9 @@ namespace {
       state.border = mix(state.background, state.foreground, 0.22);
       state.muted = mix(state.background, state.foreground, 0.58);
       state.alert = {0.77, 0.47, 0.47};
+    state.hover = mix(state.background, state.foreground, 0.12);
+    state.power_commands = settings.power_commands;
+    state.power_expanded = settings.power_expanded;
 
       init_volume(state);
       init_backlight(state, settings.backlight_card);
@@ -2071,10 +2242,15 @@ namespace {
       read_bluetooth(state);
       state.last_bluetooth_refresh = std::chrono::steady_clock::now();
 
+      // Panel availability is only known after the reads above, and an
+      // expanded section changes the height, so size the window here.
+      state.height = popup_height(state);
+
       const int margin = static_cast<int>(std::round(4.0 * scale));
 
-      // Anchor the popup horizontally at the pointer, so clicking the volume
-      // module opens it directly below that module.
+      // Anchor the popup horizontally at the pointer, so clicking a module
+      // opens it directly below that module. `centered` overrides this for
+      // actions that want the popup in the middle of the screen.
       int pointer_x = settings.bar_x + settings.bar_width / 2;
 
       xcb_query_pointer_reply_t* pointer_reply = xcb_query_pointer_reply(connection,
@@ -2085,7 +2261,11 @@ namespace {
         std::free(pointer_reply);
       }
 
-      state.x = pointer_x - state.width / 2;
+      if (settings.centered) {
+        state.x = (static_cast<int>(screen->width_in_pixels) - state.width) / 2;
+      } else {
+        state.x = pointer_x - state.width / 2;
+      }
       state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
                                     : settings.bar_y + settings.bar_height + margin;
 
@@ -2291,7 +2471,16 @@ namespace {
                     redraw();
                   }
                 }
-              } else if (state.bluetooth_expanded && state.bluetooth_available) {
+              } else if (state.power_expanded &&
+                pointer_y_pos >= power_row_top(state) + state.row_height + 14.0 * state.scale) {
+              const int row = static_cast<int>((pointer_y_pos - power_row_top(state) - state.row_height -
+                   14.0 * state.scale) / (40.0 * state.scale));
+
+              if (row >= 0 && row < 4) {
+                state.power_active = std::clamp(row + (button->detail == 4 ? -1 : 1), 0, 3);
+                redraw();
+              }
+            } else if (state.bluetooth_expanded && state.bluetooth_available) {
                 const auto layout = get_bluetooth_layout(state);
 
                 if (layout.visible_rows > 0) {
@@ -2392,7 +2581,32 @@ namespace {
                   redraw();
                 }
               }
-            } else if (button->detail == 1 && state.network_expanded && state.network_available) {
+            } else if (button->detail == 1 && pointer_y_pos >= power_row_top(state) &&
+            pointer_y_pos < power_row_top(state) + state.row_height) {
+          handled = true;
+          state.power_expanded = !state.power_expanded;
+          state.power_active = -1;
+
+          if (!sync_size()) {
+            redraw();
+          }
+        } else if (button->detail == 1 && state.power_expanded &&
+        pointer_y_pos >= power_row_top(state) + state.row_height &&
+        pointer_y_pos < power_row_top(state) + state.row_height + power_panel_height(state)) {
+          const double inner_pad = 14.0 * state.scale;
+          const double row_height = 40.0 * state.scale;
+          const double list_top = power_row_top(state) + state.row_height + inner_pad;
+          const int row = static_cast<int>((pointer_y_pos - list_top) / row_height);
+
+          // Clicking the panel background keeps it open; only a row runs its command.
+        handled = true;
+
+        if (pointer_y_pos >= list_top && row >= 0 && row < 4 && !state.power_commands[row].empty()) {
+            handled = true;
+            run_async(state.power_commands[row]);
+            running = false;
+          }
+        } else if (button->detail == 1 && state.network_expanded && state.network_available) {
               const auto layout = get_network_layout(state);
               const double wifi_center_y = layout.wifi_row_y + layout.wifi_row_height / 2.0;
               const double switch_width = 38.0 * state.scale;
@@ -2451,6 +2665,21 @@ namespace {
 
           case XCB_MOTION_NOTIFY: {
             auto* motion = reinterpret_cast<xcb_motion_notify_event_t*>(event);
+            const int hover_y = motion->root_y - state.y;
+            const int hover_row = state.power_expanded
+                    ? static_cast<int>((hover_y - power_row_top(state) - state.row_height - 14.0 * state.scale) /
+                          (40.0 * state.scale))
+                    : -1;
+
+            if (state.power_expanded && hover_row >= 0 && hover_row < 4) {
+              if (state.power_active != hover_row) {
+                state.power_active = hover_row;
+                redraw();
+              }
+            } else if (state.power_active != -1) {
+              state.power_active = -1;
+              redraw();
+            }
 
             if ((motion->state & XCB_BUTTON_MASK_1) == 0) {
               break;
@@ -2514,6 +2743,15 @@ namespace {
                   redraw();
                 }
               }
+            } else if (state.power_expanded && (keysym == 0xFF52 || keysym == 0xFF54)) { // Up, Down
+              const int delta = keysym == 0xFF52 ? -1 : 1;
+              state.power_active = std::clamp(state.power_active + delta, 0, 3);
+              redraw();
+            } else if (state.power_expanded && (keysym == 0xFF0D || keysym == 0xFF8D)) { // Return, KP_Enter
+              if (state.power_active >= 0 && !state.power_commands[state.power_active].empty()) {
+                run_async(state.power_commands[state.power_active]);
+                running = false;
+              }
             } else if (keysym == 0xFF1B) { // Escape
               running = false;
             }
@@ -2574,7 +2812,7 @@ namespace {
 } // namespace
 
 namespace system_popup {
-  system_popup_settings make_settings(const bar_settings& bar, const config& conf) {
+  system_popup_settings make_settings(const bar_settings& bar, const config& conf, const string& power_section) {
     system_popup_settings settings;
     settings.bar_x = bar.pos.x;
     settings.bar_y = bar.pos.y;
@@ -2597,6 +2835,11 @@ namespace system_popup {
         settings.font = move(font);
       }
     }
+
+    settings.power_commands = {conf.get(power_section, "lock-command", "i3lock -n"s),
+        conf.get(power_section, "logout-command", "bspc quit"s),
+        conf.get(power_section, "reboot-command", "systemctl reboot"s),
+        conf.get(power_section, "shutdown-command", "systemctl poweroff"s)};
 
     return settings;
   }

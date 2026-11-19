@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "common.hpp"
 #include "components/config.hpp"
 #include "components/types.hpp"
@@ -29,13 +31,30 @@ struct system_popup_settings {
 
   /** Battery device name below /sys/class/power_supply, empty to autodetect. */
   string battery_name{};
+
+  /**
+   * Commands for the power section, in row order: lock, logout, reboot,
+   * shutdown. Empty commands are disabled.
+   */
+  std::array<string, 4> power_commands{};
+
+  /** Open the popup with the power section already expanded. */
+  bool power_expanded{false};
+
+  /** Center the popup on the screen instead of anchoring it at the pointer. */
+  bool centered{false};
 };
 
 namespace system_popup {
   /**
    * Build popup settings from the bar settings and the module configuration.
+   *
+   * `power_section` is the config section that holds the `lock-command`,
+   * `logout-command`, `reboot-command`, and `shutdown-command` options for the
+   * power section of the popup.
    */
-  system_popup_settings make_settings(const bar_settings& bar, const config& conf);
+  system_popup_settings make_settings(
+      const bar_settings& bar, const config& conf, const string& power_section = "module/power");
 
   /**
    * Open the system popup below (or above) the bar.

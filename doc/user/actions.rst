@@ -169,17 +169,18 @@ internal/power
 ^^^^^^^^^^^^^^
 
 :``popup``:
-  Opens the built-in power menu popup with Lock, Log out, Reboot, and Shut
-  down actions. Clicking an action runs its configured command and closes the
-  popup. Press Escape or click anywhere outside an action to close it without
-  running anything. The popup can also be navigated with the arrow keys, the
-  mouse wheel, and Enter. It opens below the power module (or above it, if the
-  bar is at the bottom of the screen). This action is bound to left click by
-  default.
+  Opens the built-in system popup with the power section (Lock, Log out,
+  Reboot, and Shut down) expanded. The power actions live in the same window
+  as the volume, brightness, battery, network, and Bluetooth controls, so
+  clicking the power module and clicking the volume module open the same
+  popup. Clicking an action runs its configured command and closes the popup;
+  the arrow keys move the highlight and Enter runs it. Press Escape or click
+  anywhere outside a control to close it without running anything. This action
+  is bound to left click by default.
 
 :``popup-center``:
-  Opens the same power menu popup in the center of the screen instead of below
-  (or above) the bar. Use this for keyboard shortcuts, for example
+  Opens the same system popup as ``popup``, centered on the screen instead of
+  below (or above) the bar. Use it for keyboard shortcuts, for example
   ``polybar-msg action "#power.popup-center"``.
 
 internal/launcher
