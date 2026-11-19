@@ -58,9 +58,8 @@ by [@stringlapse](https://github.com/stringlapse).
   connections such as `Wired connection 1` are no longer cut off.
 - `internal/launcher` and the system popup now use more generous vertical and horizontal padding, so rows, labels,
   and the search field no longer feel cramped at the larger font size.
-- All popup menus now keep a static size. `internal/launcher` always reserves space for 5 applications, and the
-  system popup's network and Bluetooth lists always use five rows, so the windows no longer resize while filtering
-  or when the device list changes.
+- `internal/launcher` now resizes with the number of matching applications (up to five rows) as you filter, while
+  the system popup's network and Bluetooth lists keep a static five rows.
 - The system popup opens below the module that was clicked (the power and volume buttons), so it stays under the
   part of the bar it belongs to. `popup-center` still opens it in the middle of the screen.
 - `internal/date`: The calendar popup is wider, so the weather footer shows the complete location and conditions on

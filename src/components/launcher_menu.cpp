@@ -567,12 +567,17 @@ namespace {
   }
 
   /**
-   * Keeps the popup at a fixed size: the list always reserves
-   * MAX_VISIBLE_ROWS rows so filtering does not resize the window.
+   * Sizes the popup to the number of matches (up to MAX_VISIBLE_ROWS), so the
+   * window grows and shrinks as the application list is filtered.
    */
   void update_layout(launcher_state& state, const launcher_menu_settings& settings, int screen_width,
       int screen_height, int margin) {
-    state.visible_rows = MAX_VISIBLE_ROWS;
+    const int matches = static_cast<int>(matched_indices(state).size());
+    state.visible_rows = std::clamp(matches, 1, MAX_VISIBLE_ROWS);
+    if (state.active >= state.visible_rows) {
+      state.active = state.visible_rows - 1;
+    }
+    state.scroll = std::clamp(state.scroll, 0, std::max(0, matches - state.visible_rows));
     state.footer_top = state.list_top + state.visible_rows * state.row_height +
         static_cast<int>(std::round(8.0 * state.scale));
     state.height = state.footer_top + static_cast<int>(std::round(28.0 * state.scale)) + state.pad;
