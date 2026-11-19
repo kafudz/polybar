@@ -2583,10 +2583,20 @@ namespace {
               }
             } else if (button->detail == 1 && pointer_y_pos >= power_row_top(state) &&
             pointer_y_pos < power_row_top(state) + state.row_height) {
-          // Clicking the Power row closes the popup; the power module opens it
-          // directly with the section expanded.
-          handled = true;
-          running = false;
+          if (state.power_commands.empty() ||
+              std::all_of(state.power_commands.begin(), state.power_commands.end(),
+                  [](const string& command) { return command.empty(); })) {
+            handled = true;
+            running = false;
+          } else {
+            handled = true;
+            state.power_expanded = !state.power_expanded;
+            state.power_active = -1;
+
+            if (!sync_size()) {
+              redraw();
+            }
+          }
         } else if (button->detail == 1 && state.power_expanded &&
         pointer_y_pos >= power_row_top(state) + state.row_height &&
         pointer_y_pos < power_row_top(state) + state.row_height + power_panel_height(state)) {

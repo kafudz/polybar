@@ -38,7 +38,7 @@ struct system_popup_settings {
    */
   std::array<string, 4> power_commands{};
 
-  /** Open the popup with the power section already expanded. */
+  /** Open the popup with the power section expanded. Defaults to collapsed. */
   bool power_expanded{false};
 
   /** Center the popup on the screen instead of anchoring it at the pointer. */

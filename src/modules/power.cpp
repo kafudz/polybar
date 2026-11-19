@@ -51,10 +51,10 @@ namespace modules {
 
   void power_module::action_popup(bool centered) {
     // Power actions live in the system popup, so the module opens the same
-    // window as the volume and network modules, with the power list expanded.
+    // window as the volume and network modules. The power section starts
+    // collapsed and can be expanded by clicking its row.
     auto settings = system_popup::make_settings(m_bar, m_conf, name());
     settings.power_commands = {m_lock_command, m_logout_command, m_reboot_command, m_shutdown_command};
-    settings.power_expanded = true;
     settings.centered = centered;
 
     system_popup::toggle(settings);

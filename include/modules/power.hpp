@@ -9,11 +9,12 @@ namespace modules {
   /**
    * Power menu module.
    *
-   * Left-clicking the module opens the built-in system popup with the power
-   * section (Lock, Log out, Reboot, Shut down) expanded. The commands are
-   * configurable through `lock-command`, `logout-command`, `reboot-command`,
-   * and `shutdown-command`. Both the `popup` and `popup-center` actions open
-   * the same popup; `popup-center` places it in the middle of the screen.
+   * Left-clicking the module opens the built-in system popup, where the power
+   * section (Lock, Log out, Reboot, Shut down) starts collapsed and can be
+   * expanded by clicking its row. The commands are configurable through
+   * `lock-command`, `logout-command`, `reboot-command`, and `shutdown-command`.
+   * Both the `popup` and `popup-center` actions open the same popup;
+   * `popup-center` places it in the middle of the screen.
    */
   class power_module : public static_module<power_module> {
    public:

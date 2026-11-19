@@ -169,14 +169,14 @@ internal/power
 ^^^^^^^^^^^^^^
 
 :``popup``:
-  Opens the built-in system popup with the power section (Lock, Log out,
-  Reboot, and Shut down) expanded. The power actions live in the same window
-  as the volume, brightness, battery, network, and Bluetooth controls, so
-  clicking the power module and clicking the volume module open the same
-  popup. Clicking an action runs its configured command and closes the popup;
-  the arrow keys move the highlight and Enter runs it. Press Escape or click
-  anywhere outside a control to close it without running anything. This action
-  is bound to left click by default.
+  Opens the built-in system popup. The power section (Lock, Log out, Reboot,
+  and Shut down) starts collapsed; click its row to expand it. The power
+  actions live in the same window as the volume, brightness, battery, network,
+  and Bluetooth controls, so clicking the power module and clicking the volume
+  module open the same popup. Clicking an action runs its configured command
+  and closes the popup; the arrow keys move the highlight and Enter runs it.
+  Press Escape or click anywhere outside a control to close it without running
+  anything. This action is bound to left click by default.
 
 :``popup-center``:
   Opens the same system popup as ``popup``, centered on the screen instead of
