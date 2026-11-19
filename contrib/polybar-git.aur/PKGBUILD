@@ -5,7 +5,7 @@ pkgname="${_pkgname}-git"
 pkgver=3.7.2.r0.g272bac4
 pkgrel=1
 pkgdesc="A fast and easy-to-use status bar (kafudz fork)"
-arch=(i686 x86_64 aarch64)
+arch=(x86_64 aarch64)
 url="https://github.com/kafudz/polybar"
 license=(MIT)
 
@@ -18,8 +18,10 @@ depends=(
   libpulse
   libuv
   alsa-lib
+  xcb-util
   xcb-util-cursor
   xcb-util-image
+  xcb-util-renderutil
   xcb-util-wm
   xcb-util-xrm
 )
@@ -48,8 +50,15 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd "${_pkgname}" || exit
-  git describe --long --tags 2>/dev/null \
-    | sed 's/^.*-//; s/-/.r/; s/-/./g'
+
+  local ver
+  # The fork has no release tags, so fall back to version.txt + commit count.
+  if ! ver=$(git describe --long --tags --abbrev=7 2>/dev/null); then
+    ver="$(sed -n 's/^\([0-9][0-9.]*\)$/\1/p' version.txt | head -n1)"
+    ver="${ver:-0}.r$(git rev-list --count HEAD).g$(git rev-parse --short=7 HEAD)"
+  fi
+
+  printf '%s' "$ver" | sed 's/^v//; s/-/.r/; s/-/./g'
 }
 
 prepare() {
@@ -64,14 +73,16 @@ build() {
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \
-    -DPYTHON_EXECUTABLE=/usr/bin/python3 \
     -DBUILD_TESTS=OFF
 
   cmake --build build
 }
 
 check() {
-  cmake --build build --target test
+  # The unit tests need googletest downloaded at configure time, so they stay
+  # disabled; just verify the binaries built correctly.
+  DISPLAY= ./build/bin/polybar --version
+  ./build/bin/polybar-msg --help | grep -q '^Usage:'
 }
 
 package() {
