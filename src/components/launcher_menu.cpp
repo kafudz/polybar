@@ -28,7 +28,7 @@
 POLYBAR_NS
 
 namespace {
-  constexpr int MAX_VISIBLE_ROWS = 15;
+  constexpr int MAX_VISIBLE_ROWS = 5;
 
   std::atomic<bool> g_open{false};
   std::atomic<bool> g_close_requested{false};
@@ -577,15 +577,14 @@ namespace {
         static_cast<int>(std::round(8.0 * state.scale));
     state.height = state.footer_top + static_cast<int>(std::round(28.0 * state.scale)) + state.pad;
 
-    // Nudge the launcher slightly toward the middle of the screen from the bar
-    // center, so it sits closer to the clock without fully following the menu
-    // module.
+    // Keep the launcher horizontally centered on the bar.
     const int bar_center = settings.bar_x + settings.bar_width / 2;
-    const int screen_center = screen_width / 2;
-    const int nudge = std::clamp((screen_center - bar_center) / 3, -48, 48);
-    state.x = bar_center + nudge - state.width / 2;
+    state.x = bar_center - state.width / 2;
     state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
                                   : settings.bar_y + settings.bar_height + margin;
+
+    // Shift it slightly further down from just below the bar.
+    state.y += static_cast<int>(std::round(24.0 * state.scale));
 
     const int max_x = std::max(margin, screen_width - state.width - margin);
     const int max_y = std::max(margin, screen_height - state.height - margin);
