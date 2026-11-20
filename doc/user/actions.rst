@@ -146,9 +146,9 @@ internal/date
   ``date-alt``/``time-alt``
 
 :``calendar``:
-  Opens the built-in calendar popup. The popup is placed below the bar (or
-  above it, if the bar is at the bottom of the screen) and can be navigated
-  with the mouse, the arrow keys, and Page Up/Page Down.
+  Opens the built-in calendar popup at a fixed position just below the bar,
+  centered on the screen below the clock. It can be navigated with the mouse,
+  the arrow keys, and Page Up/Page Down.
   Press Escape, click anywhere outside a control, or click a day to close it.
 
   This action is automatically bound to left click when the ``calendar``
