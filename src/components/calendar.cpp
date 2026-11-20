@@ -753,7 +753,7 @@ namespace {
     set_source(cr, mix(state.background, state.border, 0.6));
     cairo_set_line_width(cr, 1.0);
     cairo_move_to(cr, state.pad, top + 68.0 * scale);
-    cairo_line_to(cr, state.width - state.pad, top + 41.0 * scale);
+    cairo_line_to(cr, state.width - state.pad, top + 68.0 * scale);
     cairo_stroke(cr);
 
     // ---- Moon (bottom) ----
