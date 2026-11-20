@@ -1263,7 +1263,8 @@ namespace {
       }
     }
 
-    for (const auto& line : song_lines) {
+    string file_name;
+  for (const auto& line : song_lines) {
       const size_t colon = line.find(':');
       if (colon == string::npos) {
         continue;
@@ -1276,6 +1277,28 @@ namespace {
         result.artist = value;
       } else if (key == "Album") {
         result.album = value;
+      } else if (key == "file") {
+        file_name = value;
+      }
+    }
+
+    // Many files have no Title tag. Derive it from the filename instead.
+    if (result.title.empty() && !file_name.empty()) {
+      size_t pos = file_name.find_last_of('/');
+      pos = (pos == string::npos ? 0 : pos + 1);
+      string base = file_name.substr(pos);
+      const size_t dot = base.find_last_of('.');
+      if (dot != string::npos) {
+        base.erase(dot);
+      }
+      const size_t sep = base.find(" - ");
+      if (sep != string::npos) {
+        if (result.artist.empty()) {
+          result.artist = base.substr(0, sep);
+        }
+        result.title = base.substr(sep + 3);
+      } else {
+        result.title = base;
       }
     }
 
