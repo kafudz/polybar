@@ -818,15 +818,18 @@ namespace {
     draw_text_left(cr, fit_text(cr, title, available, 12.0 * scale), state.pad, title_y, 12.0 * scale,
         state.foreground);
 
-    string detail = state.media.artist;
-    if (!state.media.album.empty()) {
-      if (!detail.empty()) {
-        detail += " · ";
+    // MPD uses label-song = "%title%", so only the title is shown there.
+    if (state.media.source != media_source::MPD) {
+      string detail = state.media.artist;
+      if (!state.media.album.empty()) {
+        if (!detail.empty()) {
+          detail += " · ";
+        }
+        detail += state.media.album;
       }
-      detail += state.media.album;
+      draw_text_left(cr, fit_text(cr, detail, available, 11.0 * scale), state.pad, detail_y, 11.0 * scale,
+          state.muted);
     }
-    draw_text_left(cr, fit_text(cr, detail, available, 11.0 * scale), state.pad, detail_y, 11.0 * scale,
-        state.muted);
 
     set_source(cr, mix(state.background, state.foreground, 0.2));
     cairo_set_line_width(cr, 2.0 * scale);
