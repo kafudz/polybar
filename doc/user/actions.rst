@@ -165,10 +165,11 @@ internal/date
   conditions, wrapping onto a second line when they do not fit. If the request
   fails, the footer shows ``Weather unavailable``.
 
-The weather footer is split into two parallel panels: current conditions on the
-left and moon status on the right. Conditions include live sunrise/sunset times
-from wttr.in. The moon panel shows the calculated moon phase plus a day/night
-label based on the current local hour (06:00–18:00 is day).
+The weather footer is a single compact line: current conditions on the left and
+moon status on the right, separated by a vertical divider. Conditions include
+live sunrise/sunset times from wttr.in. The moon section shows the calculated
+moon phase plus a day/night label based on the current local hour
+(06:00–18:00 is day).
 
 Set ``calendar-media = true`` to show mpv playback status in an extra section
 below the weather footer. It reads the mpv JSON IPC socket from
