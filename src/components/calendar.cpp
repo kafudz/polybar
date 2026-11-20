@@ -840,7 +840,7 @@ namespace {
     cairo_line_to(cr, state.width - state.pad, progress_y);
     cairo_stroke(cr);
 
-    if (state.media.duration > 0.0) {
+    if (std::isfinite(state.media.duration) && std::isfinite(state.media.position) && state.media.duration > 0.0) {
       const double progress = std::clamp(state.media.position / state.media.duration, 0.0, 1.0);
       set_source(cr, state.foreground);
       cairo_move_to(cr, state.pad, progress_y);
@@ -1142,17 +1142,24 @@ namespace {
    */
   string mpv_request(int fd, const string& command, int request_id) {
     const string payload = "{\"command\":" + command + ",\"request_id\":" + std::to_string(request_id) + "}\n";
-    if (send(fd, payload.data(), payload.size(), 0) != static_cast<ssize_t>(payload.size())) {
+    if (send(fd, payload.data(), payload.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(payload.size())) {
       return {};
     }
 
     const string id_marker = "\"request_id\":" + std::to_string(request_id);
     string buffer_text;
     char buffer[4096];
+    size_t total_read = 0;
 
     while (true) {
       const ssize_t read_bytes = recv(fd, buffer, sizeof(buffer), 0);
       if (read_bytes <= 0) {
+        break;
+      }
+
+      // Bound the work done for a misbehaving peer
+      total_read += static_cast<size_t>(read_bytes);
+      if (total_read > (1U << 20) || buffer_text.size() > (1U << 18)) {
         break;
       }
 
@@ -1184,14 +1191,18 @@ namespace {
    * if the socket cannot be reached.
    */
   int connect_unix_socket(const string& path) {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    sockaddr_un address{};
+    if (path.empty() || path.size() >= sizeof(address.sun_path)) {
+      return -1;
+    }
+
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) {
       return -1;
     }
 
-    sockaddr_un address{};
     address.sun_family = AF_UNIX;
-    std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
+    std::memcpy(address.sun_path, path.c_str(), path.size());
 
     struct timeval timeout{};
     timeout.tv_sec = 1;
@@ -1211,23 +1222,30 @@ namespace {
     if (runtime != nullptr && *runtime != '\0') {
       return string{runtime} + "/mpd/socket";
     }
-    return "/run/user/1000/mpd/socket";
+    return "/run/user/" + std::to_string(static_cast<unsigned long>(getuid())) + "/mpd/socket";
   }
 
   /** Sends a command and reads MPD response lines up to OK/ACK. */
   std::vector<string> mpd_command(int fd, const string& command) {
     const string payload = command + "\n";
-    if (send(fd, payload.data(), payload.size(), 0) != static_cast<ssize_t>(payload.size())) {
+    if (send(fd, payload.data(), payload.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(payload.size())) {
       return {};
     }
 
     std::vector<string> lines;
     string buffer;
     char chunk[4096];
+    size_t total_read = 0;
 
     while (true) {
       const ssize_t count = recv(fd, chunk, sizeof(chunk), 0);
       if (count <= 0) {
+        break;
+      }
+
+      // Bound the work done for a misbehaving peer
+      total_read += static_cast<size_t>(count);
+      if (total_read > (1U << 20) || buffer.size() > (1U << 18)) {
         break;
       }
       buffer.append(chunk, static_cast<size_t>(count));
@@ -1526,23 +1544,40 @@ namespace {
 
         try {
           const string location = settings.weather_location;
-          std::thread weather_thread([weather, location] { fetch_weather(weather, location); });
-          std::thread media_thread;
-
-          if (state.media_enabled) {
-            media = std::make_shared<media_shared>();
-            media->info.status = media_status::LOADING;
-            const string socket_path = settings.media_socket;
-          media_thread = std::thread([media, socket_path] { fetch_media(media, socket_path); });
-          }
-
-          weather_thread.detach();
-          if (media_thread.joinable()) {
-            media_thread.detach();
-          }
+          std::thread([weather, location] {
+            try {
+              fetch_weather(weather, location);
+            } catch (...) {
+              std::lock_guard<std::mutex> lock(weather->mutex);
+              weather->info.status = weather_status::ERROR;
+              weather->updated = true;
+            }
+          }).detach();
         } catch (const std::exception& err) {
           state.weather.status = weather_status::ERROR;
-          logger::make().err("calendar: could not start status threads (%s)", err.what());
+          weather.reset();
+          logger::make().err("calendar: could not start weather thread (%s)", err.what());
+        }
+      }
+
+      if (state.media_enabled) {
+        media = std::make_shared<media_shared>();
+        media->info.status = media_status::LOADING;
+
+        try {
+          const string socket_path = settings.media_socket;
+          std::thread([media, socket_path] {
+            try {
+              fetch_media(media, socket_path);
+            } catch (...) {
+              std::lock_guard<std::mutex> lock(media->mutex);
+              media->info.status = media_status::STOPPED;
+              media->updated = true;
+            }
+          }).detach();
+        } catch (const std::exception& err) {
+          media.reset();
+          logger::make().err("calendar: could not start media thread (%s)", err.what());
         }
       }
 

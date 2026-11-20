@@ -808,7 +808,7 @@ namespace {
     state.backlight_max = std::strtof(file_util::contents(base + "/max_brightness").c_str(), nullptr);
     state.backlight_direct = access(state.brightness_path.c_str(), W_OK) == 0;
 
-    if (state.backlight_max <= 0.0f) {
+    if (!std::isfinite(state.backlight_max) || state.backlight_max <= 0.0f) {
       return false;
     }
 
@@ -1515,9 +1515,12 @@ namespace {
 
     cancel_password_prompt(state);
     set_network_message(state, "Connecting to " + truncate_text(ssid, 18) + "…", 10);
-    run_async("nmcli device wifi connect " + quoted_ssid + " password " + shell_quote(password) +
-        "; status=$?; if [ $status -ne 0 ]; then nmcli connection delete id " + quoted_ssid +
-        " >/dev/null 2>&1; fi");
+    // Only remove the profile if this attempt created it. A pre-existing saved profile
+    // must survive a mistyped password.
+    run_async("existing=$(nmcli -g UUID connection show id " + quoted_ssid + " 2>/dev/null | head -n 1); "
+        "nmcli device wifi connect " + quoted_ssid + " password " + shell_quote(password) +
+        "; status=$?; if [ $status -ne 0 ] && [ -z \"$existing\" ]; then nmcli connection delete id " +
+        quoted_ssid + " >/dev/null 2>&1; fi");
     state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
   }
 

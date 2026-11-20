@@ -77,6 +77,9 @@ by [@stringlapse](https://github.com/stringlapse).
 - When the `-r` flag is provided, and RandR reports zero connected active screens, polybar will not restart. This fixes polybar dying on some laptops when the lid is closed. ([`#3078`](https://github.com/polybar/polybar/pull/3078))).
 
 ### Fixed
+- Calendar popup: media widget no longer depends on weather being enabled; worker threads can no longer terminate the bar on unexpected errors; MPD/mpv socket I/O no longer risks SIGPIPE, over-long socket paths or unbounded reads; MPD fallback socket uses the real user id.
+- Network popup: a failed Wi-Fi password attempt no longer deletes a previously saved connection profile.
+- `http_downloader`: check libcurl initialization, limit redirects and response size.
 - `internal/networkmanager`: Fixed a crash while reading the active connection. The module kept pointers into a
   temporary device list and dereferenced them after the list was destroyed.
 - The system popup no longer shows a stray glyph after the battery status (for example next to `Full`), because the
