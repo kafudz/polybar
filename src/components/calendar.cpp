@@ -130,6 +130,8 @@ namespace {
     bool media_enabled{false};
     int media_top{0};
     int media_height{0};
+    int eq_top{0};
+    int eq_height{0};
     media_info media;
     bool media_control_hover{false};
     int wave_phase{0};
@@ -846,9 +848,23 @@ namespace {
       cairo_stroke(cr);
     }
 
+
+  }
+
+  void draw_equalizer(cairo_t* cr, const calendar_state& state) {
+    const double scale = state.scale;
+    const double top = state.eq_top;
+    const double height = state.eq_height;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, top);
+    cairo_line_to(cr, state.width - state.pad, top);
+    cairo_stroke(cr);
+
     // Animated equalizer wave below the media status.
-    const double wave_top = top + 72.0 * scale;
-    const double wave_bottom = top + height - 2.0 * scale;
+    const double wave_top = top + 4.0 * scale;
+    const double wave_bottom = top + height - 4.0 * scale;
     const double wave_height = std::max(1.0, wave_bottom - wave_top);
     const int bars = 48;
     const double bar_gap = 2.0 * scale;
@@ -961,6 +977,7 @@ namespace {
 
   if (state.media_enabled) {
     draw_media(cr, state);
+    draw_equalizer(cr, state);
     }
 
     cairo_destroy(cr);
@@ -1463,14 +1480,17 @@ namespace {
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
       const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
-      const int media_height = state.media_enabled ? static_cast<int>(std::round(104.0 * scale)) : 0;
+      const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
+      const int eq_height = state.media_enabled ? static_cast<int>(std::round(36.0 * scale)) : 0;
 
       state.weather_top = block_top;
       state.weather_height = weather_height;
       state.media_top = block_top + weather_height;
       state.media_height = media_height;
+      state.eq_top = state.media_top + media_height;
+      state.eq_height = eq_height;
       state.footer_top = block_top;
-      state.footer_height = weather_height + media_height;
+      state.footer_height = weather_height + media_height + eq_height;
 
       state.height = state.footer_height > 0 ? block_top + state.footer_height : grid_bottom + state.pad;
 
