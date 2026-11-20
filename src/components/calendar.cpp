@@ -668,15 +668,15 @@ namespace {
   void draw_weather(cairo_t* cr, const calendar_state& state) {
     const double scale = state.scale;
     const double top = state.weather_top;
-    const double icon_size = 14.0 * scale;
+    const double icon_size = 18.0 * scale;
     const double full_width = state.width - 2.0 * state.pad;
 
     // Weather occupies the top rows, moon status the rows underneath. Both
     // span the full popup width so the complete status fits on each line.
-    const double weather_primary = top + 15.0 * scale;
-    const double weather_detail = top + 32.0 * scale;
-    const double moon_primary = top + 52.0 * scale;
-    const double moon_detail = top + 69.0 * scale;
+    const double weather_primary = top + 20.0 * scale;
+    const double weather_detail = top + 40.0 * scale;
+    const double moon_primary = top + 66.0 * scale;
+    const double moon_detail = top + 86.0 * scale;
 
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
@@ -686,9 +686,9 @@ namespace {
 
     // ---- Weather (top) ----
     if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading…", state.pad, weather_primary, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Loading…", state.pad, weather_primary, 15.0 * scale, state.muted);
     } else if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Unavailable", state.pad, weather_primary, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Unavailable", state.pad, weather_primary, 15.0 * scale, state.muted);
     } else {
       draw_weather_icon(cr, state.weather.condition, state.pad, weather_primary - icon_size / 2.0, icon_size,
           state.foreground);
@@ -710,8 +710,8 @@ namespace {
         primary = state.weather.location.empty() ? "Weather" : state.weather.location;
       }
 
-      draw_text_left(cr, fit_text(cr, primary, text_width, 12.0 * scale), text_x, weather_primary,
-          12.0 * scale, state.foreground);
+      draw_text_left(cr, fit_text(cr, primary, text_width, 15.0 * scale), text_x, weather_primary,
+          15.0 * scale, state.foreground);
 
       string detail;
       if (!state.weather.sunrise.empty() && !state.weather.sunset.empty()) {
@@ -739,15 +739,15 @@ namespace {
         detail = state.weather.location;
       }
 
-      draw_text_left(cr, fit_text(cr, detail, full_width, 10.0 * scale), state.pad, weather_detail,
-          10.0 * scale, state.muted);
+      draw_text_left(cr, fit_text(cr, detail, full_width, 13.0 * scale), state.pad, weather_detail,
+          13.0 * scale, state.muted);
     }
 
     // Subtle divider between the weather and moon rows.
     set_source(cr, mix(state.background, state.border, 0.6));
     cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, state.pad, top + 42.0 * scale);
-    cairo_line_to(cr, state.width - state.pad, top + 42.0 * scale);
+    cairo_move_to(cr, state.pad, top + 53.0 * scale);
+    cairo_line_to(cr, state.width - state.pad, top + 53.0 * scale);
     cairo_stroke(cr);
 
     // ---- Moon (bottom) ----
@@ -766,8 +766,8 @@ namespace {
       moon_primary_text += " · " + day_night;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_primary_text, moon_text_width, 12.0 * scale), moon_text_x,
-        moon_primary, 12.0 * scale, state.foreground);
+    draw_text_left(cr, fit_text(cr, moon_primary_text, moon_text_width, 15.0 * scale), moon_text_x,
+        moon_primary, 15.0 * scale, state.foreground);
 
     string moon_detail_text;
     if (!state.weather.moon_glyph.empty()) {
@@ -783,8 +783,8 @@ namespace {
       moon_detail_text = moon_phase_name(phase) + " · " + day_night;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_detail_text, full_width, 10.0 * scale), state.pad, moon_detail,
-        10.0 * scale, state.muted);
+    draw_text_left(cr, fit_text(cr, moon_detail_text, full_width, 13.0 * scale), state.pad, moon_detail,
+        13.0 * scale, state.muted);
   }
 
   void draw_media(cairo_t* cr, const calendar_state& state) {
@@ -1261,7 +1261,7 @@ namespace {
       state.media_enabled = settings.media;
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
+      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(104.0 * scale)) : 0;
       const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
 
       state.weather_top = block_top;
