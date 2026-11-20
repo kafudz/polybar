@@ -718,7 +718,7 @@ namespace {
 
       string detail;
       if (!state.weather.sunrise.empty() && !state.weather.sunset.empty()) {
-        detail = "☀ " + state.weather.sunrise + "-" + state.weather.sunset;
+        detail = "\uf185 " + state.weather.sunrise + "-" + state.weather.sunset;
       }
       if (!state.weather.feels_like.empty()) {
         if (!detail.empty()) {
@@ -772,19 +772,10 @@ namespace {
     draw_text_left(cr, fit_text(cr, moon_primary_text, moon_text_width, 12.0 * scale), moon_text_x,
         moon_primary, 12.0 * scale, state.foreground);
 
-    string moon_detail_text;
-    if (!state.weather.moon_glyph.empty()) {
-      moon_detail_text = state.weather.moon_glyph;
-    }
-    if (!state.weather.moon_phase.empty()) {
-      if (!moon_detail_text.empty()) {
-        moon_detail_text += " · ";
-      }
-      moon_detail_text += state.weather.moon_phase;
-    }
-    if (moon_detail_text.empty()) {
-      moon_detail_text = moon_phase_name(phase) + " · " + day_night;
-    }
+    // The moon glyph returned by wttr.in (%m) is an emoji outside the Nerd
+    // font used by cairo, so it would render as a missing box. Use the locally
+    // computed phase name instead.
+    const string moon_detail_text = moon_phase_name(phase) + " · " + day_night;
 
     draw_text_left(cr, fit_text(cr, moon_detail_text, full_width, 11.0 * scale), state.pad, moon_detail,
         11.0 * scale, state.muted);
@@ -820,7 +811,7 @@ namespace {
     const string source_name = state.media.source == media_source::MPD ? "MPD" :
         state.media.source == media_source::MPV ? "MPV" : "MEDIA";
     draw_text_left(cr, source_name, state.pad, label_y, 9.0 * scale, state.muted);
-    const string play_label = state.media.status == media_status::PLAYING ? "❚❚" : "▶";
+    const string play_label = state.media.status == media_status::PLAYING ? "\uf04c" : "\uf04b";
     draw_text_right(cr, play_label, state.width - state.pad, label_y, 11.0 * scale, state.foreground);
 
     const string title = state.media.title.empty() ? "Untitled" : state.media.title;
