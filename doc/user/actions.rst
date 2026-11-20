@@ -165,10 +165,10 @@ internal/date
   conditions, wrapping onto a second line when they do not fit. If the request
   fails, the footer shows ``Weather unavailable``.
 
-The weather footer shows two compact lines: current conditions on the left
-and moon status on the right. Each line has a primary row and a smaller
-detail row so the full status is visible. Conditions include live
-sunrise/sunset times from wttr.in. The moon section shows the calculated
+The weather footer stacks two full-width sections: current conditions on top
+and moon status directly below it. Each section has a primary row and a
+smaller detail row so the complete status is visible. Conditions include
+live sunrise/sunset times from wttr.in. The moon section shows the calculated
 moon phase plus a day/night label based on the current local hour
 (06:00–18:00 is day).
 

@@ -669,16 +669,14 @@ namespace {
     const double scale = state.scale;
     const double top = state.weather_top;
     const double icon_size = 14.0 * scale;
-    const double first_line = top + 16.0 * scale;
-    const double second_line = top + 34.0 * scale;
+    const double full_width = state.width - 2.0 * state.pad;
 
-    // Weather and moon share the same two lines: conditions on the left half,
-    // moon status on the right half. Each half gets a detail line underneath
-    // so nothing is cut off or squeezed into one cramped row.
-    const double gutter = 12.0 * scale;
-    const double column_width = (state.width - 2.0 * state.pad - gutter) / 2.0;
-    const double left_x = state.pad;
-    const double right_x = left_x + column_width + gutter;
+    // Weather occupies the top rows, moon status the rows underneath. Both
+    // span the full popup width so the complete status fits on each line.
+    const double weather_primary = top + 15.0 * scale;
+    const double weather_detail = top + 32.0 * scale;
+    const double moon_primary = top + 52.0 * scale;
+    const double moon_detail = top + 69.0 * scale;
 
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
@@ -686,17 +684,17 @@ namespace {
     cairo_line_to(cr, state.width - state.pad, top);
     cairo_stroke(cr);
 
-    // ---- Weather: primary line ----
+    // ---- Weather (top) ----
     if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading…", left_x, first_line, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Loading…", state.pad, weather_primary, 12.0 * scale, state.muted);
     } else if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Unavailable", left_x, first_line, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Unavailable", state.pad, weather_primary, 12.0 * scale, state.muted);
     } else {
-      draw_weather_icon(cr, state.weather.condition, left_x, first_line - icon_size / 2.0, icon_size,
+      draw_weather_icon(cr, state.weather.condition, state.pad, weather_primary - icon_size / 2.0, icon_size,
           state.foreground);
 
-      const double text_x = left_x + icon_size + 6.0 * scale;
-      const double text_width = column_width - icon_size - 8.0 * scale;
+      const double text_x = state.pad + icon_size + 6.0 * scale;
+      const double text_width = full_width - icon_size - 6.0 * scale;
 
       string primary;
       if (!state.weather.condition.empty()) {
@@ -712,10 +710,9 @@ namespace {
         primary = state.weather.location.empty() ? "Weather" : state.weather.location;
       }
 
-      draw_text_left(cr, fit_text(cr, primary, text_width, 12.0 * scale), text_x, first_line,
+      draw_text_left(cr, fit_text(cr, primary, text_width, 12.0 * scale), text_x, weather_primary,
           12.0 * scale, state.foreground);
 
-      // ---- Weather: detail line ----
       string detail;
       if (!state.weather.sunrise.empty() && !state.weather.sunset.empty()) {
         detail = "☀ " + state.weather.sunrise + "-" + state.weather.sunset;
@@ -742,44 +739,51 @@ namespace {
         detail = state.weather.location;
       }
 
-      draw_text_left(cr, fit_text(cr, detail, column_width, 10.0 * scale), left_x, second_line,
+      draw_text_left(cr, fit_text(cr, detail, full_width, 10.0 * scale), state.pad, weather_detail,
           10.0 * scale, state.muted);
     }
 
-    // ---- Moon: primary line ----
+    // Subtle divider between the weather and moon rows.
+    set_source(cr, mix(state.background, state.border, 0.6));
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, top + 42.0 * scale);
+    cairo_line_to(cr, state.width - state.pad, top + 42.0 * scale);
+    cairo_stroke(cr);
+
+    // ---- Moon (bottom) ----
     const std::time_t now = std::time(nullptr);
     std::tm local{};
     localtime_r(&now, &local);
     const int phase = moon_phase_index(local);
-    draw_moon(cr, state, right_x, first_line - icon_size / 2.0, icon_size, phase);
+    draw_moon(cr, state, state.pad, moon_primary - icon_size / 2.0, icon_size, phase);
 
-    const double moon_text_x = right_x + icon_size + 6.0 * scale;
-    const double moon_text_width = column_width - icon_size - 8.0 * scale;
+    const double moon_text_x = state.pad + icon_size + 6.0 * scale;
+    const double moon_text_width = full_width - icon_size - 6.0 * scale;
     const string day_night = state.weather.moon_day.empty() ? day_night_label(local) : state.weather.moon_day;
-    string moon_primary = moon_phase_name(phase);
+
+    string moon_primary_text = moon_phase_name(phase);
     if (!day_night.empty()) {
-      moon_primary += " · " + day_night;
+      moon_primary_text += " · " + day_night;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_primary, moon_text_width, 12.0 * scale), moon_text_x, first_line,
-        12.0 * scale, state.foreground);
+    draw_text_left(cr, fit_text(cr, moon_primary_text, moon_text_width, 12.0 * scale), moon_text_x,
+        moon_primary, 12.0 * scale, state.foreground);
 
-    // ---- Moon: detail line ----
-    string moon_detail;
+    string moon_detail_text;
     if (!state.weather.moon_glyph.empty()) {
-      moon_detail = state.weather.moon_glyph;
+      moon_detail_text = state.weather.moon_glyph;
     }
     if (!state.weather.moon_phase.empty()) {
-      if (!moon_detail.empty()) {
-        moon_detail += " · ";
+      if (!moon_detail_text.empty()) {
+        moon_detail_text += " · ";
       }
-      moon_detail += state.weather.moon_phase;
+      moon_detail_text += state.weather.moon_phase;
     }
-    if (moon_detail.empty()) {
-      moon_detail = moon_phase_name(phase) + " · " + day_night;
+    if (moon_detail_text.empty()) {
+      moon_detail_text = moon_phase_name(phase) + " · " + day_night;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_detail, column_width, 10.0 * scale), right_x, second_line,
+    draw_text_left(cr, fit_text(cr, moon_detail_text, full_width, 10.0 * scale), state.pad, moon_detail,
         10.0 * scale, state.muted);
   }
 
@@ -1245,7 +1249,7 @@ namespace {
       state.media_enabled = settings.media;
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(44.0 * scale)) : 0;
+      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
       const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
 
       state.weather_top = block_top;
