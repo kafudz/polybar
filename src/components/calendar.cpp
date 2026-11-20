@@ -862,23 +862,30 @@ namespace {
     cairo_line_to(cr, state.width - state.pad, top);
     cairo_stroke(cr);
 
-    // Animated equalizer wave below the media status.
-    const double wave_top = top + 4.0 * scale;
-    const double wave_bottom = top + height - 4.0 * scale;
-    const double wave_height = std::max(1.0, wave_bottom - wave_top);
-    const int bars = 48;
-    const double bar_gap = 2.0 * scale;
+    // Classic stepped equalizer bars below the media status.
+    const double eq_top_y = top + 4.0 * scale;
+    const double eq_bottom = top + height - 4.0 * scale;
+    const double range = std::max(1.0, eq_bottom - eq_top_y);
+    const int bars = 24;
+    const double bar_gap = 3.0 * scale;
     const double total_width = state.width - 2.0 * state.pad;
     const double bar_width = std::max(1.0, (total_width - (bars - 1) * bar_gap) / bars);
+    const int steps = 8;
 
     for (int i = 0; i < bars; i++) {
       const double x = state.pad + i * (bar_width + bar_gap);
-      double level = 0.5 + 0.5 * std::sin(state.wave_phase * 0.15 + i * 0.35) *
-                                 std::sin(state.wave_phase * 0.07 + i * 0.11);
-      level = 0.15 + 0.85 * level;
-      const double h = wave_height * level;
-      set_source(cr, mix(state.background, state.foreground, 0.3 + 0.7 * level));
-      cairo_rectangle(cr, x, wave_bottom - h, bar_width, h);
+
+      // Each bar dances at its own speed/phase, then snap to a discrete step
+      // so the result reads as an equalizer rather than a smooth wave.
+      double level = 0.5 + 0.5 * std::sin(state.wave_phase * (0.09 + (i % 5) * 0.02) + i * 0.6);
+      level *= 0.5 + 0.5 * std::sin(state.wave_phase * 0.05 + i * 0.3);
+      level = 0.12 + 0.88 * level;
+      int step = static_cast<int>(std::round(level * steps));
+      step = std::clamp(step, 1, steps);
+      const double h = range * step / steps;
+
+      set_source(cr, mix(state.background, state.foreground, 0.35 + 0.65 * (step / (double)steps)));
+      cairo_rectangle(cr, x, eq_bottom - h, bar_width, h);
       cairo_fill(cr);
     }
   }
