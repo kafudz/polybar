@@ -83,9 +83,11 @@ namespace {
   };
 
   enum class media_status { DISABLED, LOADING, STOPPED, PLAYING, PAUSED };
+  enum class media_source { NONE, MPV, MPD };
 
   struct media_info {
     media_status status{media_status::DISABLED};
+    media_source source{media_source::NONE};
     string title{};
     string artist{};
     string album{};
@@ -814,7 +816,9 @@ namespace {
     const double progress_y = top + height - 6.0 * scale;
     const double available = state.width - 2.0 * state.pad - 34.0 * scale;
 
-    draw_text_left(cr, "MPV", state.pad, label_y, 9.0 * scale, state.muted);
+    const string source_name = state.media.source == media_source::MPD ? "MPD" :
+        state.media.source == media_source::MPV ? "MPV" : "MEDIA";
+    draw_text_left(cr, source_name, state.pad, label_y, 9.0 * scale, state.muted);
     const string play_label = state.media.status == media_status::PLAYING ? "❚❚" : "▶";
     draw_text_right(cr, play_label, state.width - state.pad, label_y, 11.0 * scale, state.foreground);
 
@@ -1133,63 +1137,213 @@ namespace {
     return {};
   }
 
+  /**
+   * Connects to a UNIX socket with a short send/receive timeout. Returns -1
+   * if the socket cannot be reached.
+   */
+  int connect_unix_socket(const string& path) {
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+      return -1;
+    }
+
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
+
+    struct timeval timeout{};
+    timeout.tv_sec = 1;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+    if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+      close(fd);
+      return -1;
+    }
+
+    return fd;
+  }
+
+  string mpd_socket_path() {
+    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+    if (runtime != nullptr && *runtime != '\0') {
+      return string{runtime} + "/mpd/socket";
+    }
+    return "/run/user/1000/mpd/socket";
+  }
+
+  /** Sends a command and reads MPD response lines up to OK/ACK. */
+  std::vector<string> mpd_command(int fd, const string& command) {
+    const string payload = command + "\n";
+    if (send(fd, payload.data(), payload.size(), 0) != static_cast<ssize_t>(payload.size())) {
+      return {};
+    }
+
+    std::vector<string> lines;
+    string buffer;
+    char chunk[4096];
+
+    while (true) {
+      const ssize_t count = recv(fd, chunk, sizeof(chunk), 0);
+      if (count <= 0) {
+        break;
+      }
+      buffer.append(chunk, static_cast<size_t>(count));
+
+      size_t start = 0;
+      while (start < buffer.size()) {
+        const size_t newline = buffer.find('\n', start);
+        if (newline == string::npos) {
+          break;
+        }
+        string line = buffer.substr(start, newline - start);
+        start = newline + 1;
+        if (!line.empty() && line.back() == '\r') {
+          line.pop_back();
+        }
+        lines.push_back(line);
+      }
+      buffer.erase(0, start);
+
+      for (const auto& line : lines) {
+        if (line.compare(0, 2, "OK") == 0 || line.compare(0, 3, "ACK") == 0) {
+          return lines;
+        }
+      }
+    }
+
+    return lines;
+  }
+
+  /** Splits an MPD response line such as "Artist: Name" at the first colon. */
+  string mpd_value(const string& line) {
+    const size_t colon = line.find(':');
+    if (colon == string::npos) {
+      return {};
+    }
+    size_t pos = colon + 1;
+    while (pos < line.size() && line[pos] == ' ') {
+      pos++;
+    }
+    return line.substr(pos);
+  }
+
+  bool fetch_mpd(media_info& result) {
+    const int fd = connect_unix_socket(mpd_socket_path());
+    if (fd < 0) {
+      return false;
+    }
+
+    // MPD greets every connection with an "OK MPD <version>" line. Consume it
+    // so it is not mistaken for the end of the first command's response.
+    char greeting[4096];
+    recv(fd, greeting, sizeof(greeting), 0);
+
+    const auto status_lines = mpd_command(fd, "status");
+    const auto song_lines = mpd_command(fd, "currentsong");
+    close(fd);
+
+    string state;
+    string elapsed;
+    string duration;
+    for (const auto& line : status_lines) {
+      const size_t colon = line.find(':');
+      if (colon == string::npos) {
+        continue;
+      }
+      const string key = line.substr(0, colon);
+      const string value = mpd_value(line);
+      if (key == "state") {
+        state = value;
+      } else if (key == "time") {
+        const size_t sep = value.find(':');
+        if (sep != string::npos) {
+          elapsed = value.substr(0, sep);
+          duration = value.substr(sep + 1);
+        }
+      } else if (key == "elapsed") {
+        elapsed = value;
+      } else if (key == "duration") {
+        duration = value;
+      }
+    }
+
+    for (const auto& line : song_lines) {
+      const size_t colon = line.find(':');
+      if (colon == string::npos) {
+        continue;
+      }
+      const string key = line.substr(0, colon);
+      const string value = mpd_value(line);
+      if (key == "Title") {
+        result.title = value;
+      } else if (key == "Artist") {
+        result.artist = value;
+      } else if (key == "Album") {
+        result.album = value;
+      }
+    }
+
+    result.position = to_double(elapsed);
+    result.duration = to_double(duration);
+
+    if (state == "play") {
+      result.status = media_status::PLAYING;
+    } else if (state == "pause") {
+      result.status = media_status::PAUSED;
+    } else {
+      result.status = media_status::STOPPED;
+    }
+
+    result.source = media_source::MPD;
+    return true;
+  }
+
   void fetch_media(const std::shared_ptr<media_shared>& media, const string& socket_path) {
     media_info result;
     result.status = media_status::STOPPED;
 
-    int fd = -1;
-    for (const auto& path : mpv_socket_candidates(socket_path)) {
-      fd = socket(AF_UNIX, SOCK_STREAM, 0);
-      if (fd < 0) {
-        break;
+    // Prefer MPD when it is running; fall back to mpv's IPC socket otherwise.
+    if (!fetch_mpd(result)) {
+      int fd = -1;
+      for (const auto& path : mpv_socket_candidates(socket_path)) {
+        fd = connect_unix_socket(path);
+        if (fd >= 0) {
+          break;
+        }
       }
 
-      sockaddr_un address{};
-      address.sun_family = AF_UNIX;
-      std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
+      if (fd >= 0) {
+        const string title_reply = mpv_request(fd, "[\"get_property\",\"media-title\"]", 1);
+        const string pause_reply = mpv_request(fd, "[\"get_property\",\"pause\"]", 2);
+        const string position_reply = mpv_request(fd, "[\"get_property\",\"time-pos\"]", 3);
+        const string duration_reply = mpv_request(fd, "[\"get_property\",\"duration\"]", 4);
+        const string artist_reply = mpv_request(fd, "[\"get_property\",\"metadata/ARTIST\"]", 5);
+        const string album_reply = mpv_request(fd, "[\"get_property\",\"metadata/ALBUM\"]", 6);
 
-      struct timeval timeout{};
-      timeout.tv_sec = 1;
-      setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-      setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+        const auto success = [](const string& reply) {
+          return reply.find("\"error\":\"success\"") != string::npos;
+        };
 
-      if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) {
-        break;
+        result.title = json_value(title_reply, "data");
+        result.artist = json_value(artist_reply, "data");
+        result.album = json_value(album_reply, "data");
+        result.position = to_double(json_value(position_reply, "data"));
+        result.duration = to_double(json_value(duration_reply, "data"));
+
+        if (success(title_reply) || success(pause_reply) || success(position_reply) || success(duration_reply)) {
+          result.status = media_status::PLAYING;
+        }
+
+        if (json_value(pause_reply, "data") == "true") {
+          result.status = media_status::PAUSED;
+        }
+
+        result.source = media_source::MPV;
+        close(fd);
+      } else {
+        logger::make().info("calendar: neither MPD nor mpv IPC socket is reachable");
       }
-
-      close(fd);
-      fd = -1;
-    }
-
-    if (fd >= 0) {
-      const string title_reply = mpv_request(fd, "[\"get_property\",\"media-title\"]", 1);
-      const string pause_reply = mpv_request(fd, "[\"get_property\",\"pause\"]", 2);
-      const string position_reply = mpv_request(fd, "[\"get_property\",\"time-pos\"]", 3);
-      const string duration_reply = mpv_request(fd, "[\"get_property\",\"duration\"]", 4);
-      const string artist_reply = mpv_request(fd, "[\"get_property\",\"metadata/ARTIST\"]", 5);
-      const string album_reply = mpv_request(fd, "[\"get_property\",\"metadata/ALBUM\"]", 6);
-
-      const auto success = [](const string& reply) {
-        return reply.find("\"error\":\"success\"") != string::npos;
-      };
-
-      result.title = json_value(title_reply, "data");
-      result.artist = json_value(artist_reply, "data");
-      result.album = json_value(album_reply, "data");
-      result.position = to_double(json_value(position_reply, "data"));
-      result.duration = to_double(json_value(duration_reply, "data"));
-
-      if (success(title_reply) || success(pause_reply) || success(position_reply) || success(duration_reply)) {
-        result.status = media_status::PLAYING;
-      }
-
-      if (json_value(pause_reply, "data") == "true") {
-        result.status = media_status::PAUSED;
-      }
-
-      close(fd);
-    } else {
-      logger::make().info("calendar: mpv IPC socket not reachable");
     }
 
     {
@@ -1254,7 +1408,11 @@ namespace {
       state.weekday_height = static_cast<int>(std::round(18.0 * scale));
       state.cell_width = static_cast<int>(std::round(46.0 * scale));
       state.cell_height = static_cast<int>(std::round(28.0 * scale));
-      state.width = 7 * state.cell_width + 2 * state.pad;
+      // The footer (weather + moon status) needs more horizontal room than the
+      // 7-day grid, so give the popup a minimum width that fits the full text.
+      const int grid_width = 7 * state.cell_width + 2 * state.pad;
+      const int footer_min_width = static_cast<int>(std::round(420.0 * scale));
+      state.width = std::max(grid_width, footer_min_width);
 
       const int grid_bottom = state.pad + state.header_height + state.weekday_height + 6 * state.cell_height;
       state.weather_enabled = settings.weather;
