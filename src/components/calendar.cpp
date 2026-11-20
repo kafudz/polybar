@@ -667,50 +667,60 @@ namespace {
 
   void draw_weather(cairo_t* cr, const calendar_state& state) {
     const double scale = state.scale;
-
-    set_source(cr, state.border);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, state.pad, state.weather_top);
-    cairo_line_to(cr, state.width - state.pad, state.weather_top);
-    cairo_stroke(cr);
-
     const double top = state.weather_top;
     const double height = state.weather_height;
-    const double column_width = (state.width - 2.0 * state.pad) / 2.0;
+
+    // Two equal, non-overlapping columns separated by a gutter. The gutter
+    // keeps the weather and moon status visually parallel without letting
+    // either panel's text encroach on the other.
+    const double gutter = 12.0 * scale;
+    const double column_width = (state.width - 2.0 * state.pad - gutter) / 2.0;
     const double left_x = state.pad;
-    const double right_x = state.pad + column_width;
+    const double right_x = left_x + column_width + gutter;
+    const double separator_x = left_x + column_width + gutter / 2.0;
 
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, state.pad + column_width, top);
-    cairo_line_to(cr, state.pad + column_width, top + height);
+    cairo_move_to(cr, state.pad, top);
+    cairo_line_to(cr, state.width - state.pad, top);
+    cairo_move_to(cr, separator_x, top);
+    cairo_line_to(cr, separator_x, top + height);
     cairo_stroke(cr);
 
-    const double label_y = top + 11.0 * scale;
-    const double body_y = top + 34.0 * scale;
-    const double detail_y = top + 53.0 * scale;
-    const double icon_size = 20.0 * scale;
+    // Rows are spaced by at least the rendered line height so labels, values
+    // and details never overlap vertically.
+    const double label_y = top + 12.0 * scale;
+    const double primary_y = top + 34.0 * scale;
+    const double secondary_y = top + 50.0 * scale;
+    const double detail_y = top + 70.0 * scale;
+    const double icon_size = 18.0 * scale;
+
+    // ---- Weather column ----
+    cairo_save(cr);
+    cairo_rectangle(cr, left_x, top + 1.0, column_width, height - 1.0);
+    cairo_clip(cr);
 
     draw_text_left(cr, "WEATHER", left_x, label_y, 9.0 * scale, state.muted);
-    draw_text_left(cr, "MOON", right_x, label_y, 9.0 * scale, state.muted);
 
     if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading…", left_x, body_y, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Loading…", left_x, primary_y, 12.0 * scale, state.muted);
     } else if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Unavailable", left_x, body_y, 12.0 * scale, state.muted);
+      draw_text_left(cr, "Unavailable", left_x, primary_y, 12.0 * scale, state.muted);
     } else {
-      draw_weather_icon(cr, state.weather.condition, left_x, body_y - icon_size / 2.0, icon_size,
-          state.foreground);
-      const double text_x = left_x + icon_size + 6.0 * scale;
-      const string condition = state.weather.condition.empty() ? "Weather" : state.weather.condition;
-      draw_text_left(cr, fit_text(cr, condition, column_width - icon_size - 6.0 * scale, 12.0 * scale), text_x,
-          body_y - 6.0 * scale, 12.0 * scale, state.foreground);
-      draw_text_left(cr, state.weather.temperature, text_x, body_y + 9.0 * scale, 12.0 * scale,
+      draw_weather_icon(cr, state.weather.condition, left_x, primary_y - icon_size / 2.0, icon_size,
           state.foreground);
 
-      string detail = state.weather.location;
+      const double text_x = left_x + icon_size + 6.0 * scale;
+      const double text_width = column_width - icon_size - 6.0 * scale;
+      const string condition = state.weather.condition.empty() ? "Weather" : state.weather.condition;
+
+      draw_text_left(cr, fit_text(cr, condition, text_width, 12.0 * scale), text_x, primary_y,
+          12.0 * scale, state.foreground);
+      draw_text_left(cr, state.weather.temperature, text_x, secondary_y, 12.0 * scale, state.foreground);
+
+      string detail;
       if (!state.weather.sunrise.empty() && !state.weather.sunset.empty()) {
-        detail += " · ☀ " + state.weather.sunrise + "-" + state.weather.sunset;
+        detail = state.weather.sunrise + "-" + state.weather.sunset;
       }
       if (!state.weather.feels_like.empty()) {
         if (!detail.empty()) {
@@ -718,34 +728,47 @@ namespace {
         }
         detail += "feels " + state.weather.feels_like;
       }
+      if (detail.empty()) {
+        detail = state.weather.location;
+      }
 
-      draw_text_left(cr, fit_text(cr, detail, column_width, 11.0 * scale), left_x, detail_y, 11.0 * scale,
-          state.muted);
+      draw_text_left(cr, fit_text(cr, detail, column_width, 11.0 * scale), left_x, detail_y,
+          11.0 * scale, state.muted);
     }
+
+    cairo_restore(cr);
+
+    // ---- Moon column ----
+    cairo_save(cr);
+    cairo_rectangle(cr, right_x, top + 1.0, column_width, height - 1.0);
+    cairo_clip(cr);
+
+    draw_text_left(cr, "MOON", right_x, label_y, 9.0 * scale, state.muted);
 
     const std::time_t now = std::time(nullptr);
     std::tm local{};
     localtime_r(&now, &local);
     const int phase = moon_phase_index(local);
-    draw_moon(cr, state, right_x, body_y - icon_size / 2.0, icon_size, phase);
+    draw_moon(cr, state, right_x, primary_y - icon_size / 2.0, icon_size, phase);
 
     const double moon_text_x = right_x + icon_size + 6.0 * scale;
-    draw_text_left(cr, fit_text(cr, moon_phase_name(phase), column_width - icon_size - 6.0 * scale,
-                      12.0 * scale),
-        moon_text_x, body_y - 6.0 * scale, 12.0 * scale, state.foreground);
-    draw_text_left(cr, state.weather.moon_day.empty() ? day_night_label(local) : state.weather.moon_day,
-        moon_text_x, body_y + 9.0 * scale, 12.0 * scale, state.foreground);
+    const double moon_text_width = column_width - icon_size - 6.0 * scale;
+    const string phase_name = moon_phase_name(phase);
+    const string day_night = state.weather.moon_day.empty() ? day_night_label(local) : state.weather.moon_day;
 
-    string moon_detail = state.weather.moon_day.empty() ? day_night_label(local) : state.weather.moon_day;
+    draw_text_left(cr, fit_text(cr, phase_name, moon_text_width, 12.0 * scale), moon_text_x, primary_y,
+        12.0 * scale, state.foreground);
+    draw_text_left(cr, day_night, moon_text_x, secondary_y, 12.0 * scale, state.foreground);
+
+    string moon_detail = day_night;
     if (!state.weather.moon_phase.empty()) {
-      if (!moon_detail.empty()) {
-        moon_detail += " · ";
-      }
-      moon_detail += state.weather.moon_phase;
+      moon_detail += " · " + state.weather.moon_phase;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_detail, column_width, 11.0 * scale), right_x, detail_y, 11.0 * scale,
-        state.muted);
+    draw_text_left(cr, fit_text(cr, moon_detail, column_width, 11.0 * scale), right_x, detail_y,
+        11.0 * scale, state.muted);
+
+    cairo_restore(cr);
   }
 
   void draw_media(cairo_t* cr, const calendar_state& state) {
@@ -770,9 +793,9 @@ namespace {
     }
 
     const double label_y = top + 12.0 * scale;
-    const double title_y = top + 28.0 * scale;
-    const double detail_y = top + 43.0 * scale;
-    const double progress_y = top + height - 5.0 * scale;
+    const double title_y = top + 30.0 * scale;
+    const double detail_y = top + 46.0 * scale;
+    const double progress_y = top + height - 6.0 * scale;
     const double available = state.width - 2.0 * state.pad - 34.0 * scale;
 
     draw_text_left(cr, "MPV", state.pad, label_y, 9.0 * scale, state.muted);
@@ -1210,7 +1233,7 @@ namespace {
       state.media_enabled = settings.media;
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
+      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(86.0 * scale)) : 0;
       const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
 
       state.weather_top = block_top;
