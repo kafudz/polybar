@@ -997,22 +997,24 @@ namespace {
     }
   }
 
-  string find_mpv_socket(const string& configured) {
+  std::vector<string> mpv_socket_candidates(const string& configured) {
+    std::vector<string> paths;
     if (!configured.empty()) {
-      return configured;
-    }
+      paths.push_back(configured);
+    } else {
+      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+      if (runtime != nullptr && *runtime != '\0') {
+        paths.push_back(string{runtime} + "/mpv-socket");
+      }
 
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime != nullptr && *runtime != '\0') {
-      return string{runtime} + "/mpv-socket";
-    }
+      const char* home = std::getenv("HOME");
+      if (home != nullptr && *home != '\0') {
+        paths.push_back(string{home} + "/.config/mpv/mpv-socket");
+      }
 
-    const char* home = std::getenv("HOME");
-    if (home != nullptr && *home != '\0') {
-      return string{home} + "/.config/mpv/mpv-socket";
+      paths.push_back("/tmp/mpv-socket");
     }
-
-    return "/tmp/mpv-socket";
+    return paths;
   }
 
   /**
@@ -1133,12 +1135,15 @@ namespace {
 
   void fetch_media(const std::shared_ptr<media_shared>& media, const string& socket_path) {
     media_info result;
+    result.status = media_status::STOPPED;
 
-    const string path = find_mpv_socket(socket_path);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) {
-      result.status = media_status::STOPPED;
-    } else {
+    int fd = -1;
+    for (const auto& path : mpv_socket_candidates(socket_path)) {
+      fd = socket(AF_UNIX, SOCK_STREAM, 0);
+      if (fd < 0) {
+        break;
+      }
+
       sockaddr_un address{};
       address.sun_family = AF_UNIX;
       std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
@@ -1148,36 +1153,43 @@ namespace {
       setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
       setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
-      if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
-        result.status = media_status::STOPPED;
-      } else {
-        const string title_reply = mpv_request(fd, "[\"get_property\",\"media-title\"]", 1);
-        const string pause_reply = mpv_request(fd, "[\"get_property\",\"pause\"]", 2);
-        const string position_reply = mpv_request(fd, "[\"get_property\",\"time-pos\"]", 3);
-        const string duration_reply = mpv_request(fd, "[\"get_property\",\"duration\"]", 4);
-        const string artist_reply = mpv_request(fd, "[\"get_property\",\"metadata/ARTIST\"]", 5);
-        const string album_reply = mpv_request(fd, "[\"get_property\",\"metadata/ALBUM\"]", 6);
-
-        const auto success = [](const string& reply) {
-          return reply.find("\"error\":\"success\"") != string::npos;
-        };
-
-        result.title = json_value(title_reply, "data");
-        result.artist = json_value(artist_reply, "data");
-        result.album = json_value(album_reply, "data");
-        result.position = to_double(json_value(position_reply, "data"));
-        result.duration = to_double(json_value(duration_reply, "data"));
-
-        if (success(title_reply) || success(pause_reply) || success(position_reply) || success(duration_reply)) {
-          result.status = media_status::PLAYING;
-        }
-
-        if (json_value(pause_reply, "data") == "true") {
-          result.status = media_status::PAUSED;
-        }
+      if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) {
+        break;
       }
 
       close(fd);
+      fd = -1;
+    }
+
+    if (fd >= 0) {
+      const string title_reply = mpv_request(fd, "[\"get_property\",\"media-title\"]", 1);
+      const string pause_reply = mpv_request(fd, "[\"get_property\",\"pause\"]", 2);
+      const string position_reply = mpv_request(fd, "[\"get_property\",\"time-pos\"]", 3);
+      const string duration_reply = mpv_request(fd, "[\"get_property\",\"duration\"]", 4);
+      const string artist_reply = mpv_request(fd, "[\"get_property\",\"metadata/ARTIST\"]", 5);
+      const string album_reply = mpv_request(fd, "[\"get_property\",\"metadata/ALBUM\"]", 6);
+
+      const auto success = [](const string& reply) {
+        return reply.find("\"error\":\"success\"") != string::npos;
+      };
+
+      result.title = json_value(title_reply, "data");
+      result.artist = json_value(artist_reply, "data");
+      result.album = json_value(album_reply, "data");
+      result.position = to_double(json_value(position_reply, "data"));
+      result.duration = to_double(json_value(duration_reply, "data"));
+
+      if (success(title_reply) || success(pause_reply) || success(position_reply) || success(duration_reply)) {
+        result.status = media_status::PLAYING;
+      }
+
+      if (json_value(pause_reply, "data") == "true") {
+        result.status = media_status::PAUSED;
+      }
+
+      close(fd);
+    } else {
+      logger::make().info("calendar: mpv IPC socket not reachable");
     }
 
     {
