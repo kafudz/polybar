@@ -112,6 +112,7 @@ namespace {
     int weekday_height{0};
     int cell_width{0};
     int cell_height{0};
+    int grid_x{0};
     double scale{1.0};
 
     int year{0};
@@ -670,15 +671,15 @@ namespace {
   void draw_weather(cairo_t* cr, const calendar_state& state) {
     const double scale = state.scale;
     const double top = state.weather_top;
-    const double icon_size = 18.0 * scale;
+    const double icon_size = 14.0 * scale;
     const double full_width = state.width - 2.0 * state.pad;
 
     // Weather occupies the top rows, moon status the rows underneath. Both
     // span the full popup width so the complete status fits on each line.
-    const double weather_primary = top + 20.0 * scale;
-    const double weather_detail = top + 40.0 * scale;
-    const double moon_primary = top + 66.0 * scale;
-    const double moon_detail = top + 86.0 * scale;
+    const double weather_primary = top + 16.0 * scale;
+    const double weather_detail = top + 32.0 * scale;
+    const double moon_primary = top + 50.0 * scale;
+    const double moon_detail = top + 66.0 * scale;
 
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
@@ -688,9 +689,9 @@ namespace {
 
     // ---- Weather (top) ----
     if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading…", state.pad, weather_primary, 15.0 * scale, state.muted);
+      draw_text_left(cr, "Loading…", state.pad, weather_primary, 12.0 * scale, state.muted);
     } else if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Unavailable", state.pad, weather_primary, 15.0 * scale, state.muted);
+      draw_text_left(cr, "Unavailable", state.pad, weather_primary, 12.0 * scale, state.muted);
     } else {
       draw_weather_icon(cr, state.weather.condition, state.pad, weather_primary - icon_size / 2.0, icon_size,
           state.foreground);
@@ -712,8 +713,8 @@ namespace {
         primary = state.weather.location.empty() ? "Weather" : state.weather.location;
       }
 
-      draw_text_left(cr, fit_text(cr, primary, text_width, 15.0 * scale), text_x, weather_primary,
-          15.0 * scale, state.foreground);
+      draw_text_left(cr, fit_text(cr, primary, text_width, 12.0 * scale), text_x, weather_primary,
+          12.0 * scale, state.foreground);
 
       string detail;
       if (!state.weather.sunrise.empty() && !state.weather.sunset.empty()) {
@@ -741,15 +742,15 @@ namespace {
         detail = state.weather.location;
       }
 
-      draw_text_left(cr, fit_text(cr, detail, full_width, 13.0 * scale), state.pad, weather_detail,
-          13.0 * scale, state.muted);
+      draw_text_left(cr, fit_text(cr, detail, full_width, 11.0 * scale), state.pad, weather_detail,
+          11.0 * scale, state.muted);
     }
 
     // Subtle divider between the weather and moon rows.
     set_source(cr, mix(state.background, state.border, 0.6));
     cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, state.pad, top + 53.0 * scale);
-    cairo_line_to(cr, state.width - state.pad, top + 53.0 * scale);
+    cairo_move_to(cr, state.pad, top + 41.0 * scale);
+    cairo_line_to(cr, state.width - state.pad, top + 41.0 * scale);
     cairo_stroke(cr);
 
     // ---- Moon (bottom) ----
@@ -768,8 +769,8 @@ namespace {
       moon_primary_text += " · " + day_night;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_primary_text, moon_text_width, 15.0 * scale), moon_text_x,
-        moon_primary, 15.0 * scale, state.foreground);
+    draw_text_left(cr, fit_text(cr, moon_primary_text, moon_text_width, 12.0 * scale), moon_text_x,
+        moon_primary, 12.0 * scale, state.foreground);
 
     string moon_detail_text;
     if (!state.weather.moon_glyph.empty()) {
@@ -785,8 +786,8 @@ namespace {
       moon_detail_text = moon_phase_name(phase) + " · " + day_night;
     }
 
-    draw_text_left(cr, fit_text(cr, moon_detail_text, full_width, 13.0 * scale), state.pad, moon_detail,
-        13.0 * scale, state.muted);
+    draw_text_left(cr, fit_text(cr, moon_detail_text, full_width, 11.0 * scale), state.pad, moon_detail,
+        11.0 * scale, state.muted);
   }
 
   void draw_media(cairo_t* cr, const calendar_state& state) {
@@ -890,7 +891,7 @@ namespace {
     const int first_day = first_day_offset(state.year, state.month, state.week_starts_on_monday);
     const int number_of_days = days_in_month(state.year, state.month);
 
-    const double grid_x = state.pad;
+    const double grid_x = state.grid_x;
     const double grid_y = state.pad + state.header_height;
 
     // Weekday headers
@@ -1303,8 +1304,11 @@ namespace {
     media_info result;
     result.status = media_status::STOPPED;
 
-    // Prefer MPD when it is running; fall back to mpv's IPC socket otherwise.
-    if (!fetch_mpd(result)) {
+    // Prefer MPD when it is actively playing; otherwise check mpv as well
+    // and use whichever source has a live track.
+    const bool mpd_ok = fetch_mpd(result);
+    const bool mpd_active = mpd_ok && result.status != media_status::STOPPED;
+    if (!mpd_active) {
       int fd = -1;
       for (const auto& path : mpv_socket_candidates(socket_path)) {
         fd = connect_unix_socket(path);
@@ -1413,13 +1417,14 @@ namespace {
       const int grid_width = 7 * state.cell_width + 2 * state.pad;
       const int footer_min_width = static_cast<int>(std::round(420.0 * scale));
       state.width = std::max(grid_width, footer_min_width);
+      state.grid_x = (state.width - 7 * state.cell_width) / 2;
 
       const int grid_bottom = state.pad + state.header_height + state.weekday_height + 6 * state.cell_height;
       state.weather_enabled = settings.weather;
       state.media_enabled = settings.media;
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(104.0 * scale)) : 0;
+      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
       const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
 
       state.weather_top = block_top;
@@ -1651,8 +1656,8 @@ namespace {
               const int days = days_in_month(state.year, state.month);
               const int grid_y = state.pad + state.header_height + state.weekday_height;
 
-              if (pointer_x_pos >= state.pad && pointer_y_pos >= grid_y) {
-                const int column = (pointer_x_pos - state.pad) / state.cell_width;
+              if (pointer_x_pos >= state.grid_x && pointer_y_pos >= grid_y) {
+                const int column = (pointer_x_pos - state.grid_x) / state.cell_width;
                 const int row = (pointer_y_pos - grid_y) / state.cell_height;
 
                 if (column >= 0 && column < 7 && row >= 0 && row < 6) {

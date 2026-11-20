@@ -172,12 +172,11 @@ live sunrise/sunset times from wttr.in. The moon section shows the calculated
 moon phase plus a day/night label based on the current local hour
 (06:00–18:00 is day).
 
-Set ``calendar-media = true`` to show mpv playback status in an extra section
-below the weather footer. It reads the mpv JSON IPC socket from
-``$XDG_RUNTIME_DIR/mpv-socket`` (falling back to
-``$HOME/.config/mpv/mpv-socket`` and ``/tmp/mpv-socket``). Start mpv with, for
-example, ``mpv --input-ipc-server=$XDG_RUNTIME_DIR/mpv-socket`` to enable it,
-or set ``calendar-media-socket`` to an explicit path.
+Set ``calendar-media = true`` to show media playback status in an extra
+section below the weather footer. It uses MPD when a track is playing,
+and falls back to mpv JSON IPC (socket at
+``$XDG_RUNTIME_DIR/mpv-socket``, ``$HOME/.config/mpv/mpv-socket`` or
+``/tmp/mpv-socket``; override with ``calendar-media-socket``).
 The section shows the track title, artist, album, play/pause state, and
 progress bar. Weather and media status are fetched in parallel on separate
 background threads, so opening the popup never waits for either one.
