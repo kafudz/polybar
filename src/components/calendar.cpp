@@ -857,6 +857,7 @@ namespace {
       // the screen (below the clock).
       const int margin = static_cast<int>(std::round(4.0 * scale));
 
+      // Center the popup horizontally on the screen, just below the bar.
       state.x = (static_cast<int>(screen->width_in_pixels) - state.width) / 2;
       state.y = settings.bar_bottom ? settings.bar_y - state.height - margin
                                     : settings.bar_y + settings.bar_height + margin;
