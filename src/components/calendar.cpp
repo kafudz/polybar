@@ -863,8 +863,8 @@ namespace {
     cairo_stroke(cr);
 
     // Classic stepped equalizer bars below the media status.
-    const double eq_top_y = top + 4.0 * scale;
-    const double eq_bottom = top + height - 4.0 * scale;
+    const double eq_top_y = top + 12.0 * scale;
+    const double eq_bottom = top + height - 12.0 * scale;
     const double range = std::max(1.0, eq_bottom - eq_top_y);
     const int bars = 24;
     const double bar_gap = 3.0 * scale;
@@ -888,6 +888,12 @@ namespace {
       cairo_rectangle(cr, x, eq_bottom - h, bar_width, h);
       cairo_fill(cr);
     }
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, top + height);
+    cairo_line_to(cr, state.width - state.pad, top + height);
+    cairo_stroke(cr);
   }
 
   void paint(xcb_connection_t* connection, xcb_pixmap_t pixmap, xcb_visualtype_t* visual,
@@ -1488,7 +1494,7 @@ namespace {
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
       const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
       const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
-      const int eq_height = state.media_enabled ? static_cast<int>(std::round(36.0 * scale)) : 0;
+      const int eq_height = state.media_enabled ? static_cast<int>(std::round(48.0 * scale)) : 0;
 
       state.weather_top = block_top;
       state.weather_height = weather_height;
