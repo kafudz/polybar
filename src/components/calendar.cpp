@@ -132,6 +132,7 @@ namespace {
     int media_height{0};
     media_info media;
     bool media_control_hover{false};
+    int wave_phase{0};
 
     int footer_top{0};
     int footer_height{0};
@@ -844,6 +845,26 @@ namespace {
       cairo_line_to(cr, state.pad + (state.width - 2.0 * state.pad) * progress, progress_y);
       cairo_stroke(cr);
     }
+
+    // Animated equalizer wave below the media status.
+    const double wave_top = top + 72.0 * scale;
+    const double wave_bottom = top + height - 2.0 * scale;
+    const double wave_height = std::max(1.0, wave_bottom - wave_top);
+    const int bars = 48;
+    const double bar_gap = 2.0 * scale;
+    const double total_width = state.width - 2.0 * state.pad;
+    const double bar_width = std::max(1.0, (total_width - (bars - 1) * bar_gap) / bars);
+
+    for (int i = 0; i < bars; i++) {
+      const double x = state.pad + i * (bar_width + bar_gap);
+      double level = 0.5 + 0.5 * std::sin(state.wave_phase * 0.15 + i * 0.35) *
+                                 std::sin(state.wave_phase * 0.07 + i * 0.11);
+      level = 0.15 + 0.85 * level;
+      const double h = wave_height * level;
+      set_source(cr, mix(state.background, state.foreground, 0.3 + 0.7 * level));
+      cairo_rectangle(cr, x, wave_bottom - h, bar_width, h);
+      cairo_fill(cr);
+    }
   }
 
   void paint(xcb_connection_t* connection, xcb_pixmap_t pixmap, xcb_visualtype_t* visual,
@@ -1442,7 +1463,7 @@ namespace {
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
       const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
-      const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
+      const int media_height = state.media_enabled ? static_cast<int>(std::round(104.0 * scale)) : 0;
 
       state.weather_top = block_top;
       state.weather_height = weather_height;
@@ -1592,8 +1613,17 @@ namespace {
       redraw();
 
       bool running = true;
+      auto last_wave_tick = std::chrono::steady_clock::now();
 
       while (running && !g_close_requested.load()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (state.media_enabled && state.media.status == media_status::PLAYING &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_wave_tick).count() >= 80) {
+          last_wave_tick = now;
+          state.wave_phase++;
+          redraw();
+        }
+
         if (weather && weather->updated.exchange(false)) {
           {
             std::lock_guard<std::mutex> lock(weather->mutex);
