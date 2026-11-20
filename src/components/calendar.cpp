@@ -679,10 +679,10 @@ namespace {
 
     // Weather occupies the top rows, moon status the rows underneath. Both
     // span the full popup width so the complete status fits on each line.
-    const double weather_primary = top + 16.0 * scale;
-    const double weather_detail = top + 32.0 * scale;
-    const double moon_primary = top + 50.0 * scale;
-    const double moon_detail = top + 66.0 * scale;
+    const double weather_primary = top + 20.0 * scale;
+    const double weather_detail = top + 40.0 * scale;
+    const double moon_primary = top + 70.0 * scale;
+    const double moon_detail = top + 90.0 * scale;
 
     set_source(cr, state.border);
     cairo_set_line_width(cr, 1.0);
@@ -752,7 +752,7 @@ namespace {
     // Subtle divider between the weather and moon rows.
     set_source(cr, mix(state.background, state.border, 0.6));
     cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, state.pad, top + 41.0 * scale);
+    cairo_move_to(cr, state.pad, top + 55.0 * scale);
     cairo_line_to(cr, state.width - state.pad, top + 41.0 * scale);
     cairo_stroke(cr);
 
@@ -1492,7 +1492,7 @@ namespace {
       state.media_enabled = settings.media;
 
       const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(80.0 * scale)) : 0;
+      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(112.0 * scale)) : 0;
       const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
       const int eq_height = state.media_enabled ? static_cast<int>(std::round(48.0 * scale)) : 0;
 
