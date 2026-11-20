@@ -10,6 +10,8 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
+#include <cstring>
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>
@@ -18,7 +20,10 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <thread>
+#include <unistd.h>
 
 #include "components/logger.hpp"
 #include "settings.hpp"
@@ -63,11 +68,34 @@ namespace {
     string humidity{};
     string wind{};
     string location{};
+    string sunrise{};
+    string sunset{};
+    string moon_phase{};
+    string moon_glyph{};
+    string moon_day{};
+    bool day{true};
   };
 
   struct weather_shared {
     std::mutex mutex;
     weather_info info;
+    std::atomic<bool> updated{false};
+  };
+
+  enum class media_status { DISABLED, LOADING, STOPPED, PLAYING, PAUSED };
+
+  struct media_info {
+    media_status status{media_status::DISABLED};
+    string title{};
+    string artist{};
+    string album{};
+    double position{0.0};
+    double duration{0.0};
+  };
+
+  struct media_shared {
+    std::mutex mutex;
+    media_info info;
     std::atomic<bool> updated{false};
   };
 
@@ -96,6 +124,15 @@ namespace {
     int weather_height{0};
     weather_info weather;
 
+    bool media_enabled{false};
+    int media_top{0};
+    int media_height{0};
+    media_info media;
+    bool media_control_hover{false};
+
+    int footer_top{0};
+    int footer_height{0};
+
     string font{"sans"};
     string locale{};
 
@@ -103,17 +140,6 @@ namespace {
     rgb foreground{1.0, 1.0, 1.0};
     rgb border{0.3, 0.3, 0.3};
     rgb muted{0.6, 0.6, 0.6};
-  };
-
-  struct button_area {
-    int x{0};
-    int y{0};
-    int width{0};
-    int height{0};
-
-    bool contains(int px, int py) const {
-      return px >= x && px < x + width && py >= y && py < y + height;
-    }
   };
 
   rgb make_rgb(const rgba& color, const rgb& fallback) {
@@ -336,6 +362,24 @@ namespace {
     cairo_stroke(cr);
   }
 
+  struct button_area {
+    int x{0};
+    int y{0};
+    int width{0};
+    int height{0};
+
+    bool contains(int px, int py) const {
+      return px >= x && px < x + width && py >= y && py < y + height;
+    }
+  };
+
+
+  button_area previous_button(const calendar_state& state);
+  button_area next_button(const calendar_state& state);
+  int days_in_month(int year, int month);
+  int first_day_offset(int year, int month, bool week_starts_on_monday);
+  xcb_visualtype_t* find_visualtype(xcb_screen_t* screen);
+
   void draw_weather_icon(cairo_t* cr, const string& condition, double x, double y, double size,
       const rgb& color) {
     const string lower = string_util::lower(condition);
@@ -388,7 +432,7 @@ namespace {
       url += url_encode(location);
     }
 
-    url += "?format=%C%7C%t%7C%f%7C%h%7C%w%7C%l";
+    url += "?format=%C%7C%t%7C%f%7C%h%7C%w%7C%l%7C%S%7C%S%7C%m";
     return url;
   }
 
@@ -412,13 +456,21 @@ namespace {
     info.wind = fields[4];
     info.location = fields[5];
 
-    for (size_t i = 6; i < fields.size(); i++) {
-      info.location += "|" + fields[i];
+    if (fields.size() > 7) {
+      info.sunrise = fields[6];
+      info.sunset = fields[7];
+      if (fields.size() > 8) {
+        info.moon_glyph = fields[8];
+      }
     }
 
     return !info.temperature.empty();
   }
 #endif
+
+  int moon_phase_index(const std::tm& local_time);
+  string moon_phase_name(int index);
+  string day_night_label(const std::tm& local_time);
 
   void fetch_weather(const std::shared_ptr<weather_shared>& weather, const string& location) {
     weather_info result;
@@ -442,6 +494,14 @@ namespace {
     result.status = weather_status::ERROR;
 #endif
 
+    std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_r(&now, &local);
+
+    const string label = day_night_label(local);
+    result.day = label == "Day";
+    result.moon_phase = moon_phase_name(moon_phase_index(local));
+    result.moon_day = label;
     {
       std::lock_guard<std::mutex> lock(weather->mutex);
       weather->info = move(result);
@@ -450,99 +510,98 @@ namespace {
     weather->updated = true;
   }
 
-  void draw_weather(cairo_t* cr, const calendar_state& state) {
-    const double scale = state.scale;
+  int moon_phase_index(const std::tm& local_time) {
+    std::tm anchor{};
+    anchor.tm_year = 100;
+    anchor.tm_mon = 0;
+    anchor.tm_mday = 6;
+    anchor.tm_hour = 18;
+    anchor.tm_isdst = 0;
+    const std::time_t anchor_time = timegm(&anchor);
 
-    set_source(cr, state.border);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, state.pad, state.weather_top);
-    cairo_line_to(cr, state.width - state.pad, state.weather_top);
-    cairo_stroke(cr);
+    std::tm current = local_time;
+    current.tm_isdst = 0;
+    const std::time_t current_time = timegm(&current);
 
-    const double line1_y = state.weather_top + 15.0 * scale;
-    const double line2_y = state.weather_top + 33.0 * scale;
-    const double line3_y = state.weather_top + 51.0 * scale;
-    const double status_y = state.weather_top + state.weather_height / 2.0;
+    constexpr double synodic_month = 29.530588853;
+    double elapsed = std::fmod(static_cast<double>(std::difftime(current_time, anchor_time)) / 86400.0,
+        synodic_month);
 
-    if (state.weather.status == weather_status::LOADING) {
-      draw_text_left(cr, "Loading weather…", state.pad, status_y, 12.0 * scale, state.muted);
+    if (elapsed < 0.0) {
+      elapsed += synodic_month;
+    }
+
+    return static_cast<int>((elapsed + synodic_month / 16.0) / (synodic_month / 8.0)) % 8;
+  }
+
+  string moon_phase_name(int index) {
+    static const std::array<const char*, 8> names = {{"New Moon", "Waxing Crescent", "First Quarter",
+        "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"}};
+    return names[std::clamp(index, 0, 7)];
+  }
+
+  void draw_moon(cairo_t* cr, const calendar_state& state, double x, double y, double size, int phase) {
+    const double cx = x + size / 2.0;
+    const double cy = y + size / 2.0;
+    const double radius = size * 0.34;
+    const rgb lit = state.foreground;
+
+    // Dark disc first, then paint lit coverage on top.
+    set_source(cr, mix(state.background, state.foreground, 0.12));
+    cairo_new_path(cr);
+    cairo_arc(cr, cx, cy, radius, 0.0, 2.0 * PI);
+    cairo_fill(cr);
+
+    set_source(cr, lit);
+
+    if (phase == 0) {
+      // New moon: leave the dark disc.
       return;
     }
 
-    if (state.weather.status != weather_status::READY) {
-      draw_text_left(cr, "Weather unavailable", state.pad, status_y, 12.0 * scale, state.muted);
+    if (phase == 4) {
+      // Full moon.
+      cairo_new_path(cr);
+      cairo_arc(cr, cx, cy, radius, 0.0, 2.0 * PI);
+      cairo_fill(cr);
       return;
     }
 
-    const double icon_size = 18.0 * scale;
-    const double icon_x = state.pad;
-    const double icon_y = line1_y - icon_size / 2.0;
-    draw_weather_icon(cr, state.weather.condition, icon_x, icon_y, icon_size, state.foreground);
-
-    const double condition_size = 12.0 * scale;
-    const double temperature_size = 12.0 * scale;
-    const double temperature_width = text_width(cr, state.weather.temperature, temperature_size);
-    const double condition_x = icon_x + icon_size + 8.0 * scale;
-    const double condition_right = state.width - state.pad - temperature_width - 8.0 * scale;
-    const string condition = state.weather.condition.empty() ? "Weather" : state.weather.condition;
-
-    draw_text_left(cr, fit_text(cr, condition, condition_right - condition_x, condition_size), condition_x,
-        line1_y, condition_size, state.foreground);
-    draw_text_right(cr, state.weather.temperature, state.width - state.pad, line1_y, temperature_size,
-        state.foreground);
-
-    string detail = state.weather.location;
-    const auto append = [&detail](const string& value, const string& prefix) {
-      if (value.empty()) {
-        return;
-      }
-
-      if (!detail.empty()) {
-        detail += "  ·  ";
-      }
-
-      detail += prefix + value;
-    };
-
-    append(state.weather.feels_like, "feels ");
-    append(state.weather.humidity, "");
-    append(state.weather.wind, "");
-
-    const double detail_size = 12.0 * scale;
-    const double detail_width = state.width - 2.0 * state.pad;
-
-    string first_line = detail;
-    string second_line;
-
-    // Keep the whole status visible: if it does not fit on one line, move the
-    // trailing sections to a second line instead of truncating them.
-    if (text_width(cr, first_line, detail_size) > detail_width) {
-      const string separator = "  ·  ";
-
-      while (!first_line.empty()) {
-        const auto split = first_line.rfind(separator);
-
-        if (split == string::npos) {
-          break;
-        }
-
-        const string tail = first_line.substr(split + separator.size());
-        first_line.erase(split);
-        second_line = second_line.empty() ? tail : tail + separator + second_line;
-
-        if (text_width(cr, first_line, detail_size) <= detail_width) {
-          break;
-        }
-      }
+    if (phase == 2) {
+      // First quarter: right half lit.
+      cairo_new_path(cr);
+      cairo_arc(cr, cx, cy, radius, -PI / 2.0, PI / 2.0);
+      cairo_fill(cr);
+      return;
     }
 
-    draw_text_left(cr, fit_text(cr, first_line, detail_width, detail_size), state.pad, line2_y, detail_size,
-        state.muted);
-
-    if (!second_line.empty()) {
-      draw_text_left(cr, fit_text(cr, second_line, detail_width, detail_size), state.pad, line3_y,
-          detail_size, state.muted);
+    if (phase == 6) {
+      // Last quarter: left half lit.
+      cairo_new_path(cr);
+      cairo_arc(cr, cx, cy, radius, PI / 2.0, 3.0 * PI / 2.0);
+      cairo_fill(cr);
+      return;
     }
+
+    // Crescent/gibbous phases: use two elliptical arcs to form the terminator.
+    const bool waxing = phase < 4;
+    const double terminator = radius * (phase == 1 || phase == 7 ? 0.75 : 0.40);
+
+    cairo_new_path(cr);
+    if (waxing) {
+      cairo_arc(cr, cx, cy, radius, -PI / 2.0, PI / 2.0);
+      cairo_arc_negative(cr, cx - terminator, cy, terminator, PI / 2.0, -PI / 2.0);
+    } else {
+      cairo_arc(cr, cx, cy, radius, PI / 2.0, 3.0 * PI / 2.0);
+      cairo_arc_negative(cr, cx + terminator, cy, terminator, 3.0 * PI / 2.0, PI / 2.0);
+    }
+    cairo_close_path(cr);
+    cairo_fill(cr);
+  }
+
+  string day_night_label(const std::tm& local_time) {
+    const int hour = local_time.tm_hour;
+    return (hour >= 6 && hour < 18) ? "Day" : "Night";
   }
 
   string format_time(const std::tm& time, const char* format, const string& locale) {
@@ -604,6 +663,149 @@ namespace {
 
   button_area next_button(const calendar_state& state) {
     return {state.width - state.pad - state.header_height, state.pad, state.header_height, state.header_height};
+  }
+
+  void draw_weather(cairo_t* cr, const calendar_state& state) {
+    const double scale = state.scale;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, state.weather_top);
+    cairo_line_to(cr, state.width - state.pad, state.weather_top);
+    cairo_stroke(cr);
+
+    const double top = state.weather_top;
+    const double height = state.weather_height;
+    const double column_width = (state.width - 2.0 * state.pad) / 2.0;
+    const double left_x = state.pad;
+    const double right_x = state.pad + column_width;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad + column_width, top);
+    cairo_line_to(cr, state.pad + column_width, top + height);
+    cairo_stroke(cr);
+
+    const double label_y = top + 11.0 * scale;
+    const double body_y = top + 34.0 * scale;
+    const double detail_y = top + 53.0 * scale;
+    const double icon_size = 20.0 * scale;
+
+    draw_text_left(cr, "WEATHER", left_x, label_y, 9.0 * scale, state.muted);
+    draw_text_left(cr, "MOON", right_x, label_y, 9.0 * scale, state.muted);
+
+    if (state.weather.status == weather_status::LOADING) {
+      draw_text_left(cr, "Loading…", left_x, body_y, 12.0 * scale, state.muted);
+    } else if (state.weather.status != weather_status::READY) {
+      draw_text_left(cr, "Unavailable", left_x, body_y, 12.0 * scale, state.muted);
+    } else {
+      draw_weather_icon(cr, state.weather.condition, left_x, body_y - icon_size / 2.0, icon_size,
+          state.foreground);
+      const double text_x = left_x + icon_size + 6.0 * scale;
+      const string condition = state.weather.condition.empty() ? "Weather" : state.weather.condition;
+      draw_text_left(cr, fit_text(cr, condition, column_width - icon_size - 6.0 * scale, 12.0 * scale), text_x,
+          body_y - 6.0 * scale, 12.0 * scale, state.foreground);
+      draw_text_left(cr, state.weather.temperature, text_x, body_y + 9.0 * scale, 12.0 * scale,
+          state.foreground);
+
+      string detail = state.weather.location;
+      if (!state.weather.sunrise.empty() && !state.weather.sunset.empty()) {
+        detail += " · ☀ " + state.weather.sunrise + "-" + state.weather.sunset;
+      }
+      if (!state.weather.feels_like.empty()) {
+        if (!detail.empty()) {
+          detail += " · ";
+        }
+        detail += "feels " + state.weather.feels_like;
+      }
+
+      draw_text_left(cr, fit_text(cr, detail, column_width, 11.0 * scale), left_x, detail_y, 11.0 * scale,
+          state.muted);
+    }
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_r(&now, &local);
+    const int phase = moon_phase_index(local);
+    draw_moon(cr, state, right_x, body_y - icon_size / 2.0, icon_size, phase);
+
+    const double moon_text_x = right_x + icon_size + 6.0 * scale;
+    draw_text_left(cr, fit_text(cr, moon_phase_name(phase), column_width - icon_size - 6.0 * scale,
+                      12.0 * scale),
+        moon_text_x, body_y - 6.0 * scale, 12.0 * scale, state.foreground);
+    draw_text_left(cr, state.weather.moon_day.empty() ? day_night_label(local) : state.weather.moon_day,
+        moon_text_x, body_y + 9.0 * scale, 12.0 * scale, state.foreground);
+
+    string moon_detail = state.weather.moon_day.empty() ? day_night_label(local) : state.weather.moon_day;
+    if (!state.weather.moon_phase.empty()) {
+      if (!moon_detail.empty()) {
+        moon_detail += " · ";
+      }
+      moon_detail += state.weather.moon_phase;
+    }
+
+    draw_text_left(cr, fit_text(cr, moon_detail, column_width, 11.0 * scale), right_x, detail_y, 11.0 * scale,
+        state.muted);
+  }
+
+  void draw_media(cairo_t* cr, const calendar_state& state) {
+    const double scale = state.scale;
+    const double top = state.media_top;
+    const double height = state.media_height;
+
+    set_source(cr, state.border);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, state.pad, top);
+    cairo_line_to(cr, state.width - state.pad, top);
+    cairo_stroke(cr);
+
+    if (state.media.status == media_status::LOADING) {
+      draw_text_left(cr, "Loading media…", state.pad, top + height / 2.0, 12.0 * scale, state.muted);
+      return;
+    }
+
+    if (state.media.status == media_status::STOPPED || state.media.status == media_status::DISABLED) {
+      draw_text_left(cr, "No media playing", state.pad, top + height / 2.0, 12.0 * scale, state.muted);
+      return;
+    }
+
+    const double label_y = top + 12.0 * scale;
+    const double title_y = top + 28.0 * scale;
+    const double detail_y = top + 43.0 * scale;
+    const double progress_y = top + height - 5.0 * scale;
+    const double available = state.width - 2.0 * state.pad - 34.0 * scale;
+
+    draw_text_left(cr, "MPV", state.pad, label_y, 9.0 * scale, state.muted);
+    const string play_label = state.media.status == media_status::PLAYING ? "❚❚" : "▶";
+    draw_text_right(cr, play_label, state.width - state.pad, label_y, 11.0 * scale, state.foreground);
+
+    const string title = state.media.title.empty() ? "Untitled" : state.media.title;
+    draw_text_left(cr, fit_text(cr, title, available, 12.0 * scale), state.pad, title_y, 12.0 * scale,
+        state.foreground);
+
+    string detail = state.media.artist;
+    if (!state.media.album.empty()) {
+      if (!detail.empty()) {
+        detail += " · ";
+      }
+      detail += state.media.album;
+    }
+    draw_text_left(cr, fit_text(cr, detail, available, 11.0 * scale), state.pad, detail_y, 11.0 * scale,
+        state.muted);
+
+    set_source(cr, mix(state.background, state.foreground, 0.2));
+    cairo_set_line_width(cr, 2.0 * scale);
+    cairo_move_to(cr, state.pad, progress_y);
+    cairo_line_to(cr, state.width - state.pad, progress_y);
+    cairo_stroke(cr);
+
+    if (state.media.duration > 0.0) {
+      const double progress = std::clamp(state.media.position / state.media.duration, 0.0, 1.0);
+      set_source(cr, state.foreground);
+      cairo_move_to(cr, state.pad, progress_y);
+      cairo_line_to(cr, state.pad + (state.width - 2.0 * state.pad) * progress, progress_y);
+      cairo_stroke(cr);
+    }
   }
 
   void paint(xcb_connection_t* connection, xcb_pixmap_t pixmap, xcb_visualtype_t* visual,
@@ -698,6 +900,10 @@ namespace {
       draw_weather(cr, state);
     }
 
+  if (state.media_enabled) {
+    draw_media(cr, state);
+    }
+
     cairo_destroy(cr);
     cairo_surface_flush(surface);
     cairo_surface_destroy(surface);
@@ -750,6 +956,197 @@ namespace {
       state.month -= 12;
       state.year++;
     }
+  }
+
+  string find_mpv_socket(const string& configured) {
+    if (!configured.empty()) {
+      return configured;
+    }
+
+    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+    if (runtime != nullptr && *runtime != '\0') {
+      return string{runtime} + "/mpv-socket";
+    }
+
+    const char* home = std::getenv("HOME");
+    if (home != nullptr && *home != '\0') {
+      return string{home} + "/.config/mpv/mpv-socket";
+    }
+
+    return "/tmp/mpv-socket";
+  }
+
+  /**
+   * Decodes a JSON string value starting at the opening quote. Handles the
+   * common escapes used by mpv (quote, backslash, newline, carriage return,
+   * tab) and leaves everything else unchanged.
+   */
+  string json_decode_string(const string& json, size_t& pos) {
+    string result;
+    if (pos >= json.size() || json[pos] != '"') {
+      return result;
+    }
+
+    pos++;
+    while (pos < json.size()) {
+      if (json[pos] == '"') {
+        pos++;
+        break;
+      }
+
+      if (json[pos] == '\\' && pos + 1 < json.size()) {
+        const char next = json[++pos];
+        result += next == 'n' ? '\n' : next == 'r' ? '\r' : next == 't' ? '\t' : next;
+        pos++;
+        continue;
+      }
+
+      result += json[pos++];
+    }
+
+    return result;
+  }
+
+  /**
+   * Extracts a raw scalar (string or number) for a key from a JSON object.
+   */
+  string json_value(const string& json, const string& key) {
+    const string pattern = "\"" + key + "\"";
+    const size_t key_pos = json.find(pattern);
+    if (key_pos == string::npos) {
+      return {};
+    }
+
+    const size_t colon = json.find(':', key_pos + pattern.size());
+    if (colon == string::npos) {
+      return {};
+    }
+
+    size_t pos = colon + 1;
+    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) {
+      pos++;
+    }
+
+    if (pos < json.size() && json[pos] == '"') {
+      return json_decode_string(json, pos);
+    }
+
+    size_t end = pos;
+    while (end < json.size() && (std::isdigit(static_cast<unsigned char>(json[end])) || json[end] == '.' ||
+               json[end] == '-' || json[end] == '+')) {
+      end++;
+    }
+
+    return json.substr(pos, end - pos);
+  }
+
+  double to_double(const string& value, double fallback = 0.0) {
+    try {
+      return std::stod(value);
+    } catch (const std::exception&) {
+      return fallback;
+    }
+  }
+
+  /**
+   * Sends one JSON IPC command and reads exactly one reply line. mpv replies
+   * are flat objects such as {"data":...,"error":"success","request_id":1},
+   * so the caller correlates them with the request id it sent.
+   */
+  string mpv_request(int fd, const string& command, int request_id) {
+    const string payload = "{\"command\":" + command + ",\"request_id\":" + std::to_string(request_id) + "}\n";
+    if (send(fd, payload.data(), payload.size(), 0) != static_cast<ssize_t>(payload.size())) {
+      return {};
+    }
+
+    const string id_marker = "\"request_id\":" + std::to_string(request_id);
+    string buffer_text;
+    char buffer[4096];
+
+    while (true) {
+      const ssize_t read_bytes = recv(fd, buffer, sizeof(buffer), 0);
+      if (read_bytes <= 0) {
+        break;
+      }
+
+      buffer_text.append(buffer, static_cast<size_t>(read_bytes));
+
+      size_t line_start = 0;
+      while (line_start < buffer_text.size()) {
+        const size_t newline = buffer_text.find('\n', line_start);
+        if (newline == string::npos) {
+          break;
+        }
+
+        const string line = buffer_text.substr(line_start, newline - line_start);
+        line_start = newline + 1;
+
+        if (line.find(id_marker) != string::npos) {
+          return line;
+        }
+      }
+
+      buffer_text.erase(0, line_start);
+    }
+
+    return {};
+  }
+
+  void fetch_media(const std::shared_ptr<media_shared>& media, const string& socket_path) {
+    media_info result;
+
+    const string path = find_mpv_socket(socket_path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+      result.status = media_status::STOPPED;
+    } else {
+      sockaddr_un address{};
+      address.sun_family = AF_UNIX;
+      std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
+
+      struct timeval timeout{};
+      timeout.tv_sec = 1;
+      setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+      setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+      if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+        result.status = media_status::STOPPED;
+      } else {
+        const string title_reply = mpv_request(fd, "[\"get_property\",\"media-title\"]", 1);
+        const string pause_reply = mpv_request(fd, "[\"get_property\",\"pause\"]", 2);
+        const string position_reply = mpv_request(fd, "[\"get_property\",\"time-pos\"]", 3);
+        const string duration_reply = mpv_request(fd, "[\"get_property\",\"duration\"]", 4);
+        const string artist_reply = mpv_request(fd, "[\"get_property\",\"metadata/ARTIST\"]", 5);
+        const string album_reply = mpv_request(fd, "[\"get_property\",\"metadata/ALBUM\"]", 6);
+
+        const auto success = [](const string& reply) {
+          return reply.find("\"error\":\"success\"") != string::npos;
+        };
+
+        result.title = json_value(title_reply, "data");
+        result.artist = json_value(artist_reply, "data");
+        result.album = json_value(album_reply, "data");
+        result.position = to_double(json_value(position_reply, "data"));
+        result.duration = to_double(json_value(duration_reply, "data"));
+
+        if (success(title_reply) || success(pause_reply) || success(position_reply) || success(duration_reply)) {
+          result.status = media_status::PLAYING;
+        }
+
+        if (json_value(pause_reply, "data") == "true") {
+          result.status = media_status::PAUSED;
+        }
+      }
+
+      close(fd);
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(media->mutex);
+      media->info = move(result);
+    }
+
+    media->updated = true;
   }
 
   void run_popup(calendar_settings settings) {
@@ -810,9 +1207,20 @@ namespace {
 
       const int grid_bottom = state.pad + state.header_height + state.weekday_height + 6 * state.cell_height;
       state.weather_enabled = settings.weather;
-      state.weather_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
-      state.weather_height = state.weather_enabled ? static_cast<int>(std::round(62.0 * scale)) : 0;
-      state.height = state.weather_enabled ? state.weather_top + state.weather_height : grid_bottom + state.pad;
+      state.media_enabled = settings.media;
+
+      const int block_top = grid_bottom + static_cast<int>(std::round(4.0 * scale));
+      const int weather_height = state.weather_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
+      const int media_height = state.media_enabled ? static_cast<int>(std::round(72.0 * scale)) : 0;
+
+      state.weather_top = block_top;
+      state.weather_height = weather_height;
+      state.media_top = block_top + weather_height;
+      state.media_height = media_height;
+      state.footer_top = block_top;
+      state.footer_height = weather_height + media_height;
+
+      state.height = state.footer_height > 0 ? block_top + state.footer_height : grid_bottom + state.pad;
 
       state.week_starts_on_monday = settings.week_starts_on_monday;
       state.font = settings.font.empty() ? "sans" : settings.font;
@@ -824,6 +1232,7 @@ namespace {
       state.muted = mix(state.background, state.foreground, 0.6);
 
       std::shared_ptr<weather_shared> weather;
+    std::shared_ptr<media_shared> media;
 
       if (state.weather_enabled) {
         state.weather.status = weather_status::LOADING;
@@ -836,10 +1245,23 @@ namespace {
 
         try {
           const string location = settings.weather_location;
-          std::thread([weather, location] { fetch_weather(weather, location); }).detach();
+          std::thread weather_thread([weather, location] { fetch_weather(weather, location); });
+          std::thread media_thread;
+
+          if (state.media_enabled) {
+            media = std::make_shared<media_shared>();
+            media->info.status = media_status::LOADING;
+            const string socket_path = settings.media_socket;
+          media_thread = std::thread([media, socket_path] { fetch_media(media, socket_path); });
+          }
+
+          weather_thread.detach();
+          if (media_thread.joinable()) {
+            media_thread.detach();
+          }
         } catch (const std::exception& err) {
           state.weather.status = weather_status::ERROR;
-          logger::make().err("calendar: could not start weather thread (%s)", err.what());
+          logger::make().err("calendar: could not start status threads (%s)", err.what());
         }
       }
 
@@ -945,6 +1367,15 @@ namespace {
           {
             std::lock_guard<std::mutex> lock(weather->mutex);
             state.weather = weather->info;
+          }
+
+          redraw();
+        }
+
+        if (media && media->updated.exchange(false)) {
+          {
+            std::lock_guard<std::mutex> lock(media->mutex);
+            state.media = media->info;
           }
 
           redraw();

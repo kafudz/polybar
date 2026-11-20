@@ -52,6 +52,8 @@ namespace modules {
     string m_calendar_font{"sans"};
     bool m_weather{false};
     string m_weather_location{};
+  bool m_media{false};
+  string m_media_socket{};
 
     std::atomic<bool> m_toggled{false};
   };

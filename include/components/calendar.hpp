@@ -29,6 +29,13 @@ struct calendar_settings {
 
   /** Location passed to wttr.in, empty to let wttr.in detect it. */
   string weather_location{};
+
+  /** Show the mpv media player status below the calendar. */
+  bool media{false};
+
+  /** mpv JSON IPC socket path; empty for the standard locations. */
+  /** mpv JSON IPC socket path; empty for the standard locations. */
+  string media_socket{};
 };
 
 namespace calendar {

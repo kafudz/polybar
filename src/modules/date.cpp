@@ -22,6 +22,8 @@ namespace modules {
     m_week_starts_on_monday = m_conf.get(name(), "calendar-week-start", "monday"s) != "sunday"s;
     m_weather = m_conf.get(name(), "calendar-weather", false);
     m_weather_location = m_conf.get(name(), "calendar-weather-location", ""s);
+    m_media = m_conf.get(name(), "calendar-media", false);
+    m_media_socket = m_conf.get(name(), "calendar-media-socket", ""s);
 
     auto fonts = m_conf.get_list<string>(m_conf.section(), "font", {});
     if (!fonts.empty()) {
@@ -142,6 +144,8 @@ namespace modules {
     settings.week_starts_on_monday = m_week_starts_on_monday;
     settings.weather = m_weather;
     settings.weather_location = m_weather_location;
+    settings.media = m_media;
+    settings.media_socket = m_media_socket;
     settings.dpi = m_bar.dpi_x > 0 ? m_bar.dpi_x : 96.0;
     settings.locale = m_bar.locale;
     settings.font = m_calendar_font;
