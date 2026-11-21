@@ -975,9 +975,9 @@ namespace {
     return result;
   }
 
-  void run_async(const string& command_line) {
+  void run_async(const string& command_line, const vector<pair<string, string>>& env = {}) {
     try {
-      process_util::fork_detached([command_line] { process_util::exec_sh(command_line.c_str()); });
+      process_util::fork_detached([command_line, env] { process_util::exec_sh(command_line.c_str(), env); });
     } catch (const std::exception& err) {
       logger::make().err("system popup: could not run command (%s)", err.what());
     }
@@ -1517,10 +1517,14 @@ namespace {
     set_network_message(state, "Connecting to " + truncate_text(ssid, 18) + "…", 10);
     // Only remove the profile if this attempt created it. A pre-existing saved profile
     // must survive a mistyped password.
+    // The password is handed over through the environment of the child and fed to
+    // `nmcli --ask` on stdin by a shell builtin, so it never appears in any argv
+    // (which every local user can read through /proc).
     run_async("existing=$(nmcli -g UUID connection show id " + quoted_ssid + " 2>/dev/null | head -n 1); "
-        "nmcli device wifi connect " + quoted_ssid + " password " + shell_quote(password) +
-        "; status=$?; if [ $status -ne 0 ] && [ -z \"$existing\" ]; then nmcli connection delete id " +
-        quoted_ssid + " >/dev/null 2>&1; fi");
+        "printf '%s\\n' \"$POLYBAR_WIFI_PASSWORD\" | nmcli --ask device wifi connect " + quoted_ssid +
+        "; status=$?; unset POLYBAR_WIFI_PASSWORD; if [ $status -ne 0 ] && [ -z \"$existing\" ]; then "
+        "nmcli connection delete id " + quoted_ssid + " >/dev/null 2>&1; fi",
+        {{"POLYBAR_WIFI_PASSWORD", password}});
     state.last_network_refresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
   }
 
