@@ -18,6 +18,7 @@ namespace modules {
 
     void teardown();
     bool has_event();
+    void idle();
     bool update();
     string get_format() const;
     string get_output();

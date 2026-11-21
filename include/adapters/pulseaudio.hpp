@@ -2,6 +2,8 @@
 
 #include <pulse/pulseaudio.h>
 
+#include <unistd.h>
+
 #include <atomic>
 #include <queue>
 
@@ -36,6 +38,7 @@ class pulseaudio {
   const string& get_name();
 
   bool wait();
+  void wait_for_events(int timeout_ms);
   int process_events();
 
   int get_volume();
@@ -75,6 +78,24 @@ class pulseaudio {
   pa_threaded_mainloop* m_mainloop{nullptr};
 
   queue m_events;
+
+  /**
+   * Owns an eventfd that is signalled by subscribe_callback whenever an event is queued.
+   *
+   * This allows wait_for_events to sleep until something happens instead of checking the queue periodically. It is
+   * a member (and not a manually closed int) so that it is also closed if the constructor throws.
+   */
+  struct eventfd_handle {
+    int fd{-1};
+    eventfd_handle() = default;
+    eventfd_handle(const eventfd_handle&) = delete;
+    eventfd_handle& operator=(const eventfd_handle&) = delete;
+    ~eventfd_handle() {
+      if (fd != -1) {
+        ::close(fd);
+      }
+    }
+  } m_eventfd;
 
   // specified sink name
   string spec_s_name;
