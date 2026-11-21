@@ -11,6 +11,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <map>
 #include <cstdlib>
 #include <ctime>
 #include <mutex>
@@ -133,6 +134,8 @@ namespace {
     string network_ip{};
     int network_signal{0};
     std::vector<network_entry> networks;
+    // Saved Wi-Fi profile name -> SSID, so each profile is only queried once.
+    std::map<string, string> profile_ssids;
     int network_scroll{0};
     string network_message{};
     std::chrono::steady_clock::time_point network_message_until{};
@@ -1245,6 +1248,8 @@ namespace {
         auto profiles = run_command_with_status("nmcli -t -f NAME,TYPE connection show 2>/dev/null");
 
         if (profiles.first == 0) {
+          std::map<string, string> known_profiles;
+
           for (const auto& line : split_lines(profiles.second)) {
             auto fields = split_terse(line);
 
@@ -1254,6 +1259,15 @@ namespace {
 
             saved_networks.insert(lower_copy(fields[0]));
 
+            auto cached = state.profile_ssids.find(fields[0]);
+            if (cached != state.profile_ssids.end()) {
+              known_profiles.emplace(fields[0], cached->second);
+              if (!cached->second.empty()) {
+                saved_networks.insert(lower_copy(cached->second));
+              }
+              continue;
+            }
+
             auto profile_ssid = run_command_with_status(
                 "nmcli -t -f 802-11-wireless.ssid connection show id " + shell_quote(fields[0]) + " 2>/dev/null");
 
@@ -1261,15 +1275,23 @@ namespace {
               continue;
             }
 
+            string ssid;
             for (const auto& profile_line : split_lines(profile_ssid.second)) {
               auto profile_fields = split_terse(profile_line);
 
-              if (profile_fields.size() >= 2 && profile_fields[0] == "802-11-wireless.ssid" &&
-                  !profile_fields[1].empty()) {
-                saved_networks.insert(lower_copy(profile_fields[1]));
+              if (profile_fields.size() >= 2 && profile_fields[0] == "802-11-wireless.ssid") {
+                ssid = profile_fields[1];
               }
             }
+
+            if (!ssid.empty()) {
+              saved_networks.insert(lower_copy(ssid));
+            }
+            known_profiles.emplace(fields[0], std::move(ssid));
           }
+
+          // Drops profiles that no longer exist.
+          state.profile_ssids = std::move(known_profiles);
         }
 
         for (const auto& line : split_lines(wifi_list.second)) {

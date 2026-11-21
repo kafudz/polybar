@@ -80,6 +80,7 @@ by [@stringlapse](https://github.com/stringlapse).
 - Calendar popup: media widget no longer depends on weather being enabled; worker threads can no longer terminate the bar on unexpected errors; MPD/mpv socket I/O no longer risks SIGPIPE, over-long socket paths or unbounded reads; MPD fallback socket uses the real user id.
 - Network popup: a failed Wi-Fi password attempt no longer deletes a previously saved connection profile.
 - Network popup: the Wi-Fi password is no longer passed on the `nmcli` command line (visible to other local users); it is passed via the environment and stdin (`nmcli --ask`).
+- Network popup: saved Wi-Fi profile SSIDs are cached so each refresh no longer spawns one `nmcli` process per profile.
 - `http_downloader`: check libcurl initialization, limit redirects and response size.
 - `internal/networkmanager`: Fixed a crash while reading the active connection. The module kept pointers into a
   temporary device list and dereferenced them after the list was destroyed.
